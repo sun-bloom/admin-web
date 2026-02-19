@@ -1,0 +1,52 @@
+{
+    "regions": [
+        {
+            "id": "region-1",
+            "regionName": "Mumbai Metropolitan Region",
+            "pincodeStart": "400001",
+            "pincodeEnd": "400107",
+            "isEnabled": true,
+            "deliveryCharge": 0,
+            "estimatedDays": 2,
+            "codAvailable": true,
+            "createdAt": "2026-01-25T00:00:00Z",
+            "updatedAt": "2026-01-25T00:00:00Z"
+        },
+        {
+            "id": "region-2",
+            "regionName": "Maharashtra (excluding Mumbai)",
+            "pincodeStart": "400108",
+            "pincodeEnd": "444704",
+            "isEnabled": true,
+            "deliveryCharge": 50,
+            "estimatedDays": 4,
+            "codAvailable": true,
+            "createdAt": "2026-01-25T00:00:00Z",
+            "updatedAt": "2026-01-25T00:00:00Z"
+        },
+        {
+            "id": "region-3",
+            "regionName": "Major Cities (Delhi, Bangalore, etc.)",
+            "pincodeStart": "110001",
+            "pincodeEnd": "560100",
+            "isEnabled": true,
+            "deliveryCharge": 50,
+            "estimatedDays": 3,
+            "codAvailable": true,
+            "createdAt": "2026-01-25T00:00:00Z",
+            "updatedAt": "2026-01-25T00:00:00Z"
+        },
+        {
+            "id": "region-4",
+            "regionName": "Rest of India",
+            "pincodeStart": "560101",
+            "pincodeEnd": "999999",
+            "isEnabled": true,
+            "deliveryCharge": 100,
+            "estimatedDays": 7,
+            "codAvailable": true,
+            "createdAt": "2026-01-25T00:00:00Z",
+            "updatedAt": "2026-01-25T00:00:00Z"
+        }
+    ]
+}

@@ -1,0 +1,357 @@
+{
+  "products": [
+    {
+      "id": "crop-top-001",
+      "name": "Floral Print Crop Top",
+      "slug": "floral-print-crop-top",
+      "category": "crop_top",
+      "description": "A beautiful floral print crop top perfect for summer outings. Made from breathable cotton blend with a comfortable fit.",
+      "basePrice": 899,
+      "images": [
+        "https://placehold.co/600x400/pink/white/png?text=Floral+Crop+Top",
+        "https://placehold.co/600x400/blue/white/png?text=Crop+Top"
+      ],
+      "variants": [
+        {
+          "id": "crop-top-001-red",
+          "color": "Red",
+          "pattern": "Floral",
+          "stock": 25,
+          "additionalPrice": 0,
+          "sku": "CT001-RED-FL",
+          "isAvailable": true
+        },
+        {
+          "id": "crop-top-001-blue",
+          "color": "Blue",
+          "pattern": "Floral",
+          "stock": 0,
+          "additionalPrice": 0,
+          "sku": "CT001-BLU-FL",
+          "isAvailable": false
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-11-15T00:00:00Z",
+      "updatedAt": "2025-11-15T00:00:00Z"
+    },
+    {
+      "id": "crop-top-002",
+      "name": "White Summer Crop Top",
+      "slug": "white-summer-crop-top",
+      "category": "crop_top",
+      "description": "Classic white crop top for summer. Simple, elegant, and versatile for any outfit.",
+      "basePrice": 699,
+      "images": [
+        "https://placehold.co/600x400/white/black/png?text=White+Crop+Top"
+      ],
+      "variants": [
+        {
+          "id": "crop-top-002-white",
+          "color": "White",
+          "pattern": "Solid",
+          "stock": 30,
+          "additionalPrice": 0,
+          "sku": "CT002-WHT-SO",
+          "isAvailable": true
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-12-01T00:00:00Z",
+      "updatedAt": "2025-12-01T00:00:00Z"
+    },
+    {
+      "id": "crop-top-003",
+      "name": "Black Party Crop Top",
+      "slug": "black-party-crop-top",
+      "category": "crop_top",
+      "description": "Stylish black crop top perfect for party wear. Features elegant neckline design.",
+      "basePrice": 999,
+      "images": [
+        "https://placehold.co/600x400/black/white/png?text=Black+Crop+Top"
+      ],
+      "variants": [
+        {
+          "id": "crop-top-003-black",
+          "color": "Black",
+          "pattern": "Solid",
+          "stock": 0,
+          "additionalPrice": 0,
+          "sku": "CT003-BLK-SO",
+          "isAvailable": false
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-12-20T00:00:00Z",
+      "updatedAt": "2025-12-20T00:00:00Z"
+    },
+    {
+      "id": "anarkali-001",
+      "name": "Royal Blue Anarkali Suit",
+      "slug": "royal-blue-anarkali-suit",
+      "category": "anarkali",
+      "description": "Elegant royal blue anarkali suit with intricate embroidery work. Perfect for weddings and special occasions.",
+      "basePrice": 2499,
+      "images": [
+        "https://placehold.co/600x400/000080/white/png?text=Anarkali+Suit",
+        "https://placehold.co/600x400/800000/white/png?text=Maroon+Anarkali"
+      ],
+      "variants": [
+        {
+          "id": "anarkali-001-blue",
+          "color": "Royal Blue",
+          "pattern": "Embroidered",
+          "stock": 10,
+          "additionalPrice": 0,
+          "sku": "AN001-BLU-EM",
+          "isAvailable": true
+        },
+        {
+          "id": "anarkali-001-maroon",
+          "color": "Maroon",
+          "pattern": "Embroidered",
+          "stock": 0,
+          "additionalPrice": 100,
+          "sku": "AN001-MAR-EM",
+          "isAvailable": false
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-10-10T00:00:00Z",
+      "updatedAt": "2025-10-10T00:00:00Z"
+    },
+    {
+      "id": "anarkali-002",
+      "name": "Pink Designer Anarkali",
+      "slug": "pink-designer-anarkali",
+      "category": "anarkali",
+      "description": "Beautiful pink anarkali with designer work. Lightweight and comfortable for all-day wear.",
+      "basePrice": 2899,
+      "images": [
+        "https://placehold.co/600x400/pink/white/png?text=Pink+Anarkali"
+      ],
+      "variants": [
+        {
+          "id": "anarkali-002-pink",
+          "color": "Pink",
+          "pattern": "Designer",
+          "stock": 12,
+          "additionalPrice": 0,
+          "sku": "AN002-PNK-DS",
+          "isAvailable": true
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2026-01-28T00:00:00Z",
+      "updatedAt": "2026-01-28T00:00:00Z"
+    },
+    {
+      "id": "maxi-001",
+      "name": "Bohemian Maxi Dress",
+      "slug": "bohemian-maxi-dress",
+      "category": "maxi",
+      "description": "Comfortable and stylish bohemian maxi dress with vibrant colors. Perfect for beach days and casual outings.",
+      "basePrice": 1499,
+      "images": [
+        "https://placehold.co/600x400/orange/white/png?text=Bohemian+Maxi",
+        "https://placehold.co/600x400/green/white/png?text=Maxi+Dress"
+      ],
+      "variants": [
+        {
+          "id": "maxi-001-multicolor",
+          "color": "Multi-color",
+          "pattern": "Bohemian Print",
+          "stock": 20,
+          "additionalPrice": 0,
+          "sku": "MX001-MUL-BO",
+          "isAvailable": true
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-09-15T00:00:00Z",
+      "updatedAt": "2025-09-15T00:00:00Z"
+    },
+    {
+      "id": "maxi-002",
+      "name": "Evening Maxi Dress",
+      "slug": "evening-maxi-dress",
+      "category": "maxi",
+      "description": "Elegant evening maxi dress perfect for dinner parties and special events.",
+      "basePrice": 1999,
+      "images": [
+        "https://placehold.co/600x400/purple/white/png?text=Evening+Maxi"
+      ],
+      "variants": [
+        {
+          "id": "maxi-002-purple",
+          "color": "Purple",
+          "pattern": "Solid",
+          "stock": 15,
+          "additionalPrice": 0,
+          "sku": "MX002-PUR-SO",
+          "isAvailable": true
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2026-01-30T00:00:00Z",
+      "updatedAt": "2026-01-30T00:00:00Z"
+    },
+    {
+      "id": "chudi-001",
+      "name": "Traditional Cotton Chudi Set",
+      "slug": "traditional-cotton-chudi-set",
+      "category": "chudi",
+      "description": "Comfortable cotton chudi set with traditional patterns. Ideal for daily wear and casual occasions.",
+      "basePrice": 1299,
+      "images": [
+        "https://placehold.co/600x400/008000/white/png?text=Chudi+Set",
+        "https://placehold.co/600x400/yellow/white/png?text=Cotton+Chudi"
+      ],
+      "variants": [
+        {
+          "id": "chudi-001-green",
+          "color": "Green",
+          "pattern": "Traditional",
+          "stock": 0,
+          "additionalPrice": 0,
+          "sku": "CD001-GRN-TR",
+          "isAvailable": false
+        },
+        {
+          "id": "chudi-001-yellow",
+          "color": "Yellow",
+          "pattern": "Traditional",
+          "stock": 0,
+          "additionalPrice": 0,
+          "sku": "CD001-YEL-TR",
+          "isAvailable": false
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-08-20T00:00:00Z",
+      "updatedAt": "2025-08-20T00:00:00Z"
+    },
+    {
+      "id": "chudi-002",
+      "name": "Silk Chudi Set",
+      "slug": "silk-chudi-set",
+      "category": "chudi",
+      "description": "Premium silk chudi set with beautiful embroidery. Perfect for festivals and ceremonies.",
+      "basePrice": 2499,
+      "images": [
+        "https://placehold.co/600x400/red/white/png?text=Silk+Chudi"
+      ],
+      "variants": [
+        {
+          "id": "chudi-002-red",
+          "color": "Red",
+          "pattern": "Embroidered",
+          "stock": 18,
+          "additionalPrice": 0,
+          "sku": "CD002-RED-EM",
+          "isAvailable": true
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2026-01-29T00:00:00Z",
+      "updatedAt": "2026-01-29T00:00:00Z"
+    },
+    {
+      "id": "panel-001",
+      "name": "Designer Panel Top",
+      "slug": "designer-panel-top",
+      "category": "panel_top",
+      "description": "Stylish designer panel top with unique color combinations. Modern and trendy design for fashion-forward women.",
+      "basePrice": 999,
+      "images": [
+        "https://placehold.co/600x400/pink/white/png?text=Panel+Top",
+        "https://placehold.co/600x400/teal/white/png?text=Designer+Panel"
+      ],
+      "variants": [
+        {
+          "id": "panel-001-pink-purple",
+          "color": "Pink-Purple",
+          "pattern": "Panel Design",
+          "stock": 0,
+          "additionalPrice": 0,
+          "sku": "PT001-PKPU-PA",
+          "isAvailable": false
+        },
+        {
+          "id": "panel-001-blue-green",
+          "color": "Blue-Green",
+          "pattern": "Panel Design",
+          "stock": 0,
+          "additionalPrice": 0,
+          "sku": "PT001-BLGR-PA",
+          "isAvailable": false
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2025-07-10T00:00:00Z",
+      "updatedAt": "2025-07-10T00:00:00Z"
+    },
+    {
+      "id": "panel-002",
+      "name": "Casual Panel Top",
+      "slug": "casual-panel-top",
+      "category": "panel_top",
+      "description": "Comfortable casual panel top for everyday wear. Easy to pair with jeans or leggings.",
+      "basePrice": 799,
+      "images": [
+        "https://placehold.co/600x400/gray/white/png?text=Casual+Panel"
+      ],
+      "variants": [
+        {
+          "id": "panel-002-gray",
+          "color": "Gray",
+          "pattern": "Panel Design",
+          "stock": 22,
+          "additionalPrice": 0,
+          "sku": "PT002-GRY-PA",
+          "isAvailable": true
+        }
+      ],
+      "isActive": true,
+      "createdAt": "2026-02-01T00:00:00Z",
+      "updatedAt": "2026-02-01T00:00:00Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": "crop_top",
+      "name": "Crop Tops",
+      "slug": "crop-tops",
+      "description": "Trendy crop tops for modern women",
+      "image": "https://placehold.co/600x400/pink/white/png?text=Crop+Tops"
+    },
+    {
+      "id": "anarkali",
+      "name": "Anarkali Suits",
+      "slug": "anarkali-suits",
+      "description": "Elegant traditional anarkali suits",
+      "image": "https://placehold.co/600x400/purple/white/png?text=Anarkali+Suits"
+    },
+    {
+      "id": "maxi",
+      "name": "Maxi Dresses",
+      "slug": "maxi-dresses",
+      "description": "Comfortable and stylish maxi dresses",
+      "image": "https://placehold.co/600x400/orange/white/png?text=Maxi+Dresses"
+    },
+    {
+      "id": "chudi",
+      "name": "Chudi Sets",
+      "slug": "chudi-sets",
+      "description": "Traditional chudi sets for all occasions",
+      "image": "https://placehold.co/600x400/teal/white/png?text=Chudi+Sets"
+    },
+    {
+      "id": "panel_top",
+      "name": "Panel Tops",
+      "slug": "panel-tops",
+      "description": "Stylish panel tops with unique designs",
+      "image": "https://placehold.co/600x400/indigo/white/png?text=Panel+Tops"
+    }
+  ]
+}

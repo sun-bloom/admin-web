@@ -1,0 +1,26 @@
+{
+  "site": {
+    "name": "YourShop",
+    "tagline": "Premium Women's Fashion",
+    "contactEmail": "support@yourshop.in",
+    "contactPhone": "+919876543210",
+    "whatsappNumber": "+919876543210",
+    "address": "Bengaluru, Karnataka, India"
+  },
+  "upi": {
+    "vpa": "yourshop@paytm",
+    "name": "YourShop",
+    "qrCode": "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=UPI%3Ayourshop%40paytm"
+  },
+  "social": {
+    "instagram": "",
+    "facebook": "",
+    "whatsapp": "https://wa.me/919876543210"
+  },
+  "policies": {
+    "returnDays": 7,
+    "replacementDays": 7,
+    "minOrderAmount": 0,
+    "freeShippingAbove": 1500
+  }
+}
