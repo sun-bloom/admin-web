@@ -1,4 +1,4 @@
-import type { Product, Order, ProductsData, OrdersData, SettingsData, DeliverySettingsData, Category, Customer, AdminUser } from '@/types'
+import type { Product, Order, ProductsData, OrdersData, SettingsData, DeliverySettingsData, Category, Customer, AdminUser, Subcategory } from '@/types'
 
 // Default to same-origin so dev tunnels (e.g. LocalTunnel/Ngrok) work via the Vite proxy.
 // If `VITE_API_URL` points to localhost but the app is opened from a non-localhost hostname
@@ -18,6 +18,16 @@ const generateId = () => {
 const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('admin_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+type ProductPayload = Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'category' | 'subcategory'> & {
+  categoryId: string
+  subcategoryId?: string | null
+}
+
+type CategoryPayload = Pick<Category, 'name' | 'slug' | 'description' | 'image'>
+type SubcategoryPayload = Pick<Subcategory, 'name' | 'categoryId'> & {
+  slug?: string
 }
 
 export const productsApi = {
@@ -41,7 +51,7 @@ export const productsApi = {
     return data.products.find((p: Product) => p.slug === slug)
   },
 
-  async create(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
+  async create(product: ProductPayload): Promise<Product> {
     const response = await fetch(`${API_BASE_URL}/api/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -50,7 +60,7 @@ export const productsApi = {
     return response.json()
   },
 
-  async update(id: string, data: Partial<Product>): Promise<Product | null> {
+  async update(id: string, data: Partial<ProductPayload>): Promise<Product | null> {
     const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -72,6 +82,68 @@ export const productsApi = {
     const response = await fetch(`${API_BASE_URL}/api/categories`)
     const data = await response.json()
     return data.categories || []
+  },
+
+  async createCategory(category: CategoryPayload): Promise<Category> {
+    const response = await fetch(`${API_BASE_URL}/api/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(category),
+    })
+    const data = await response.json()
+    return data.category || data
+  },
+
+  async updateCategory(id: string, category: CategoryPayload): Promise<Category | null> {
+    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(category),
+    })
+    if (response.ok) {
+      const data = await response.json()
+      return data.category || data
+    }
+    return null
+  },
+
+  async deleteCategory(id: string): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() },
+    })
+    return response.ok
+  },
+
+  async createSubcategory(subcategory: SubcategoryPayload): Promise<Subcategory> {
+    const response = await fetch(`${API_BASE_URL}/api/subcategories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(subcategory),
+    })
+    const data = await response.json()
+    return data.subcategory || data
+  },
+
+  async updateSubcategory(id: string, subcategory: Partial<SubcategoryPayload>): Promise<Subcategory | null> {
+    const response = await fetch(`${API_BASE_URL}/api/subcategories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(subcategory),
+    })
+    if (response.ok) {
+      const data = await response.json()
+      return data.subcategory || data
+    }
+    return null
+  },
+
+  async deleteSubcategory(id: string): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/api/subcategories/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() },
+    })
+    return response.ok
   },
 
   async getLowStock(threshold: number = 5): Promise<Product[]> {

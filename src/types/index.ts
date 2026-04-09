@@ -41,6 +41,8 @@ export interface Product {
   slug: string
   category: string | Category
   categoryId: string
+  subcategory?: string | Subcategory | null
+  subcategoryId?: string | null
   description: string
   basePrice: number
   images: string[]
@@ -50,12 +52,20 @@ export interface Product {
   updatedAt: string
 }
 
+export interface Subcategory {
+  id: string
+  name: string
+  slug: string
+  categoryId: string
+}
+
 export interface Category {
   id: string
   name: string
   slug: string
   description: string
   image: string
+  subcategories?: Subcategory[]
 }
 
 export interface ProductsData {
