@@ -88,14 +88,31 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
         header: () => (
           <span className="font-semibold text-foreground">Category</span>
         ),
-        cell: ({ row }) => (
-          <Badge variant="secondary">
-            {(typeof row.original.category === 'string'
+        cell: ({ row }) => {
+          const categoryName = (
+            typeof row.original.category === 'string'
               ? row.original.category
               : row.original.category?.name || ''
-            ).replace(/_/g, ' ')}
-          </Badge>
-        ),
+          ).replace(/_/g, ' ');
+          const subcategoryName = (
+            typeof row.original.subcategory === 'string'
+              ? row.original.subcategory
+              : row.original.subcategory?.name || ''
+          ).replace(/_/g, ' ');
+
+          return (
+            <div className="flex flex-col gap-1">
+              <Badge variant="secondary" className="w-fit">
+                {categoryName}
+              </Badge>
+              {subcategoryName && (
+                <span className="text-xs text-muted-foreground">
+                  {subcategoryName}
+                </span>
+              )}
+            </div>
+          );
+        },
       },
       {
         accessorKey: 'basePrice',

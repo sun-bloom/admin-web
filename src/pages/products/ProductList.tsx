@@ -37,15 +37,21 @@ export default function ProductList() {
     if (!search) return products;
     const query = search.toLowerCase();
     return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(query) ||
-        product.description.toLowerCase().includes(query) ||
-        (typeof product.category === 'string'
+      (product) => {
+        const categoryName = typeof product.category === 'string'
           ? product.category
-          : product.category?.name || ''
-        )
-          .toLowerCase()
-          .includes(query)
+          : product.category?.name || '';
+        const subcategoryName = typeof product.subcategory === 'string'
+          ? product.subcategory
+          : product.subcategory?.name || '';
+
+        return (
+          product.name.toLowerCase().includes(query) ||
+          product.description.toLowerCase().includes(query) ||
+          categoryName.toLowerCase().includes(query) ||
+          subcategoryName.toLowerCase().includes(query)
+        );
+      }
     );
   }, [products, search]);
 
@@ -73,7 +79,7 @@ export default function ProductList() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search products by name, description, or category..."
+            placeholder="Search products by name, description, category, or subcategory..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"

@@ -8,7 +8,8 @@ export const loginSchema = z.object({
 export const productSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters'),
   slug: z.string().min(3, 'Slug must be at least 3 characters').regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
-  category: z.string().min(1, 'Category is required'),
+  categoryId: z.string().min(1, 'Category is required'),
+  subcategoryId: z.string().optional().nullable(),
   description: z.string().min(10, 'Description must be at least 10 characters'),
   basePrice: z.number().min(0, 'Price must be positive'),
   images: z.array(z.string().url('Invalid image URL')).min(1, 'At least one image is required'),
