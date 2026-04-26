@@ -1,4 +1,4 @@
-import type { Product, Order, ProductsData, OrdersData, SettingsData, DeliverySettingsData, Category, Customer, AdminUser } from '@/types'
+import type { Product, Order, ProductsData, OrdersData, SettingsData, DeliverySettingsData, Category, Customer, AdminUser, Subcategory } from '@/types'
 
 // Default to same-origin so dev tunnels (e.g. LocalTunnel/Ngrok) work via the Vite proxy.
 // If `VITE_API_URL` points to localhost but the app is opened from a non-localhost hostname
@@ -72,6 +72,65 @@ export const productsApi = {
     const response = await fetch(`${API_BASE_URL}/api/categories`)
     const data = await response.json()
     return data.categories || []
+  },
+
+  async createCategory(category: Omit<Category, 'id' | 'subcategories'>): Promise<Category> {
+    const response = await fetch(`${API_BASE_URL}/api/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(category),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || 'Failed to create category')
+    }
+
+    return response.json()
+  },
+
+  async updateCategory(id: string, category: Partial<Omit<Category, 'id' | 'subcategories'>>): Promise<Category> {
+    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(category),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || 'Failed to update category')
+    }
+
+    return response.json()
+  },
+
+  async deleteCategory(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() },
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || 'Failed to delete category')
+    }
+  },
+
+  async createSubcategory(
+    subcategory: Pick<Subcategory, 'name' | 'slug' | 'categoryId'>
+  ): Promise<Subcategory> {
+    const response = await fetch(`${API_BASE_URL}/api/subcategories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(subcategory),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || 'Failed to create subcategory')
+    }
+
+    return response.json()
   },
 
   async getLowStock(threshold: number = 5): Promise<Product[]> {
