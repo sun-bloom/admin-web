@@ -570,11 +570,6 @@ export default function CategoryList() {
           </Card>
         ))}
       </div>
-
-      <Button variant="outline" className="w-full" onClick={() => navigate('/products/add')}>
-        <Plus className="h-4 w-4 mr-2" />
-        Add New Category (Quick)
-      </Button>
     </div>
   )
 }
