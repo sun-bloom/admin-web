@@ -172,7 +172,7 @@ export default function ProductAdd() {
                 <Label htmlFor="category">Category *</Label>
                 <select
                   id="category"
-                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   {...form.register('categoryId', {
                     onChange: () => form.setValue('subcategoryId', ''),
                   })}
@@ -198,7 +198,7 @@ export default function ProductAdd() {
                 <Label htmlFor="subcategory">Subcategory</Label>
                 <select
                   id="subcategory"
-                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                   {...form.register('subcategoryId')}
                   disabled={isLoading || !selectedCategoryId || categoriesLoading}
                 >
@@ -241,7 +241,7 @@ export default function ProductAdd() {
               <textarea
                 id="description"
                 placeholder="Describe the product..."
-                className="flex min-h-[120px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
                 {...form.register('description')}
                 disabled={isLoading}
               />
