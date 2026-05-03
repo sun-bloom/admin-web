@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Search, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { useProducts } from '@/hooks/useProducts';
 import { toast } from '@/lib/hooks/useToast';
 
 export default function ProductList() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const { products, isLoading, error, refetch, deleteProduct } = useProducts();
 
@@ -26,11 +27,7 @@ export default function ProductList() {
   };
 
   const handleEdit = (id: string) => {
-    console.log('Edit product:', id);
-    toast({
-      title: 'Edit coming soon',
-      description: 'Product editing will be available shortly.',
-    });
+    navigate(`/products/${id}`);
   };
 
   const filteredProducts = useMemo(() => {
