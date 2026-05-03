@@ -35,6 +35,9 @@ export interface Variant {
   isAvailable: boolean
 }
 
+// Payload types (create/update) often don't have server-generated ids yet.
+export type VariantPayload = Omit<Variant, 'id'> & { id?: string }
+
 export interface Product {
   id: string
   name: string
@@ -52,6 +55,12 @@ export interface Product {
   updatedAt: string
 }
 
+export type ProductPayload = Omit<
+  Product,
+  'id' | 'createdAt' | 'updatedAt' | 'category' | 'variants'
+> & {
+  variants: VariantPayload[]
+}
 export interface Subcategory {
   id: string
   name: string

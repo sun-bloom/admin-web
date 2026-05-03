@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Plus, Trash2, Edit, Loader2, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,24 +14,54 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { productsApi } from '@/lib/api'
-import { Plus, Trash2, Edit, Loader2, MoreHorizontal } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { ImageUpload } from '@/components/common/ImageUpload'
 import { toast } from '@/lib/hooks/useToast'
+import { productsApi } from '@/lib/api'
 import type { Category, Subcategory } from '@/types'
 
 const categorySchema = z.object({
   id: z.string().optional(),
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  slug: z.string().min(2, 'Slug must be at least 2 characters').regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
+  slug: z
+    .string()
+    .min(2, 'Slug must be at least 2 characters')
+    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
   description: z.string().min(5, 'Description must be at least 5 characters'),
   image: z.string().url('Must be a valid URL'),
+  subcategoriesInput: z.string().optional(),
   subcategoryName: z.string().optional(),
   subcategorySlug: z
     .string()
     .regex(/^[a-z0-9-]*$/, 'Subcategory slug can only contain lowercase letters, numbers, and hyphens')
     .optional(),
 })
+
+type CategoryFormValues = z.infer<typeof categorySchema>
+
+const toSlug = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+const parseSubcategoryNames = (value: string) => {
+  const uniqueNames = new Map<string, string>()
+
+  value
+    .split(/\r?\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((name) => {
+      const normalized = name.toLowerCase()
+      if (!uniqueNames.has(normalized)) uniqueNames.set(normalized, name)
+    })
+
+  return [...uniqueNames.values()]
+}
 
 export default function CategoryList() {
   const navigate = useNavigate()
@@ -41,21 +70,24 @@ export default function CategoryList() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null)
 
-  const form = useForm({
+  const form = useForm<CategoryFormValues>({
     resolver: zodResolver(categorySchema),
     defaultValues: {
       name: '',
       slug: '',
       description: '',
       image: '',
+      subcategoriesInput: '',
       subcategoryName: '',
       subcategorySlug: '',
     },
   })
+
   const imageValue = form.watch('image')
 
   useEffect(() => {
     loadCategories()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadCategories = async () => {
@@ -63,38 +95,39 @@ export default function CategoryList() {
       const data = await productsApi.getCategories()
       setCategories(data)
     } catch {
-      toast({
-        title: 'Failed to load categories',
-        variant: 'destructive',
-      })
+      toast({ title: 'Failed to load categories', variant: 'destructive' })
     } finally {
       setIsLoading(false)
     }
   }
 
-  const onSubmit = async (data: z.infer<typeof categorySchema>) => {
-    if (editingId) {
-      await updateCategory(editingId, data)
-    } else {
-      await addCategory(data)
+  const createSubcategoriesForCategory = async (categoryId: string, names: string[]) => {
+    if (names.length === 0) return { created: 0, failed: 0 }
+
+    const results = await Promise.allSettled(
+      names.map((name) =>
+        productsApi.createSubcategory({
+          name,
+          slug: toSlug(name),
+          categoryId,
+        })
+      )
+    )
+
+    const failed = results.filter((result) => result.status === 'rejected').length
+
+    return {
+      created: results.length - failed,
+      failed,
     }
   }
 
-  const createOptionalSubcategory = async (
-    categoryId: string,
-    data: Pick<z.infer<typeof categorySchema>, 'subcategoryName' | 'subcategorySlug'>
-  ) => {
-    const name = data.subcategoryName?.trim()
-    if (!name) return
-
-    await productsApi.createSubcategory({
-      name,
-      slug: data.subcategorySlug?.trim() || undefined,
-      categoryId,
-    })
+  const onSubmit = async (data: CategoryFormValues) => {
+    if (editingId) return updateCategory(editingId, data)
+    return addCategory(data)
   }
 
-  const addCategory = async (data: z.infer<typeof categorySchema>) => {
+  const addCategory = async (data: CategoryFormValues) => {
     try {
       const createdCategory = await productsApi.createCategory({
         name: data.name,
@@ -102,22 +135,29 @@ export default function CategoryList() {
         description: data.description,
         image: data.image,
       })
-      await createOptionalSubcategory(createdCategory.id, data)
+
+      const subcategoryNames = parseSubcategoryNames(data.subcategoriesInput || '')
+      const { created, failed } = await createSubcategoriesForCategory(createdCategory.id, subcategoryNames)
+
       toast({
-        title: 'Category created',
-        description: 'The category has been successfully created.',
+        title: failed > 0 ? 'Category created (partial)' : 'Category created',
+        description:
+          subcategoryNames.length > 0
+            ? `Added ${created}/${subcategoryNames.length} subcategories.`
+            : 'The category has been successfully created.',
       })
+
       await loadCategories()
       form.reset()
-    } catch {
+    } catch (error) {
       toast({
-        title: 'Failed to create category',
+        title: error instanceof Error ? error.message : 'Failed to create category',
         variant: 'destructive',
       })
     }
   }
 
-  const updateCategory = async (id: string, data: z.infer<typeof categorySchema>) => {
+  const updateCategory = async (id: string, data: CategoryFormValues) => {
     try {
       await productsApi.updateCategory(id, {
         name: data.name,
@@ -126,37 +166,68 @@ export default function CategoryList() {
         image: data.image,
       })
 
-      const subcategoryName = data.subcategoryName?.trim()
-      if (editingSubcategory && subcategoryName) {
-        await productsApi.updateSubcategory(editingSubcategory.id, {
-          name: subcategoryName,
-          slug: data.subcategorySlug?.trim() || undefined,
-          categoryId: id,
+      if (editingSubcategory) {
+        const subcategoryName = data.subcategoryName?.trim()
+        if (subcategoryName) {
+          await productsApi.updateSubcategory(editingSubcategory.id, {
+            name: subcategoryName,
+            slug: data.subcategorySlug?.trim() || undefined,
+            categoryId: id,
+          })
+        }
+        toast({
+          title: 'Category and subcategory updated',
+          description: 'The category and selected subcategory have been successfully updated.',
         })
       } else {
-        await createOptionalSubcategory(id, data)
+        const subcategoryNames = parseSubcategoryNames(data.subcategoriesInput || '')
+
+        if (subcategoryNames.length > 0) {
+          const existingCategory = categories.find((category) => category.id === id)
+          const existingNames = new Set(
+            (existingCategory?.subcategories || []).map((subcategory) => subcategory.name.trim().toLowerCase())
+          )
+          const duplicateNames = subcategoryNames.filter((name) => existingNames.has(name.toLowerCase()))
+          if (duplicateNames.length > 0) {
+            toast({
+              title: 'Duplicate subcategories',
+              description: `Already exist: ${duplicateNames.join(', ')}`,
+              variant: 'destructive',
+            })
+            return
+          }
+        }
+
+        const { created, failed } = await createSubcategoriesForCategory(id, subcategoryNames)
+
+        toast({
+          title: failed > 0 ? 'Category updated (partial)' : 'Category updated',
+          description:
+            subcategoryNames.length > 0
+              ? `Added ${created}/${subcategoryNames.length} new subcategories.`
+              : 'The category has been successfully updated.',
+        })
       }
 
-      toast({
-        title: editingSubcategory ? 'Category and subcategory updated' : 'Category updated',
-        description: editingSubcategory
-          ? 'The category and selected subcategory have been successfully updated.'
-          : 'The category has been successfully updated.',
-      })
       await loadCategories()
       setEditingId(null)
       setEditingSubcategory(null)
       form.reset()
-    } catch {
+    } catch (error) {
       toast({
-        title: 'Failed to update category',
+        title: error instanceof Error ? error.message : 'Failed to update category',
         variant: 'destructive',
       })
     }
   }
 
   const deleteCategory = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this category? This will also remove its products and subcategories.')) return
+    if (
+      !confirm(
+        'Are you sure you want to delete this category? This will also remove its products and subcategories.'
+      )
+    )
+      return
 
     const success = await productsApi.deleteCategory(id)
     if (success) {
@@ -166,10 +237,7 @@ export default function CategoryList() {
       })
       await loadCategories()
     } else {
-      toast({
-        title: 'Failed to delete category',
-        variant: 'destructive',
-      })
+      toast({ title: 'Failed to delete category', variant: 'destructive' })
     }
   }
 
@@ -180,6 +248,7 @@ export default function CategoryList() {
       slug: category.slug,
       description: category.description,
       image: category.image,
+      subcategoriesInput: '',
       subcategoryName: '',
       subcategorySlug: '',
     })
@@ -194,6 +263,7 @@ export default function CategoryList() {
       slug: category.slug,
       description: category.description,
       image: category.image,
+      subcategoriesInput: '',
       subcategoryName: subcategory.name,
       subcategorySlug: subcategory.slug,
     })
@@ -202,7 +272,8 @@ export default function CategoryList() {
   }
 
   const deleteSubcategory = async (subcategoryId: string) => {
-    if (!confirm('Are you sure you want to delete this subcategory? Products will keep working without it.')) return
+    if (!confirm('Are you sure you want to delete this subcategory? Products will keep working without it.'))
+      return
 
     const success = await productsApi.deleteSubcategory(subcategoryId)
     if (success) {
@@ -217,10 +288,7 @@ export default function CategoryList() {
       }
       await loadCategories()
     } else {
-      toast({
-        title: 'Failed to delete subcategory',
-        variant: 'destructive',
-      })
+      toast({ title: 'Failed to delete subcategory', variant: 'destructive' })
     }
   }
 
@@ -245,20 +313,14 @@ export default function CategoryList() {
           <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
           <p className="text-muted-foreground">Manage your product categories</p>
         </div>
-        <Button onClick={() => navigate('/dashboard')}>
-          Back to Dashboard
-        </Button>
+        <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
       </div>
 
       <form onSubmit={form.handleSubmit(onSubmit)}>
         <Card className="max-w-2xl mx-auto">
           <CardHeader>
             <CardTitle>
-              {editingSubcategory
-                ? 'Edit Category & Subcategory'
-                : editingId
-                  ? 'Edit Category'
-                  : 'Add Category'}
+              {editingSubcategory ? 'Edit Category & Subcategory' : editingId ? 'Edit Category' : 'Add Category'}
             </CardTitle>
             <CardDescription>
               {editingSubcategory
@@ -275,6 +337,7 @@ export default function CategoryList() {
                 id="name"
                 placeholder="Crop Tops"
                 {...form.register('name')}
+                disabled={form.formState.isSubmitting}
               />
               {form.formState.errors.name && (
                 <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
@@ -287,6 +350,7 @@ export default function CategoryList() {
                 id="slug"
                 placeholder="crop-tops"
                 {...form.register('slug')}
+                disabled={form.formState.isSubmitting}
               />
               {form.formState.errors.slug && (
                 <p className="text-sm text-destructive">{form.formState.errors.slug.message}</p>
@@ -295,11 +359,11 @@ export default function CategoryList() {
 
             <div className="space-y-2">
               <Label htmlFor="description">Description *</Label>
-              <textarea
+              <Textarea
                 id="description"
                 placeholder="A trendy collection of crop tops..."
-                className="flex min-h-[100px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
                 {...form.register('description')}
+                disabled={form.formState.isSubmitting}
               />
               {form.formState.errors.description && (
                 <p className="text-sm text-destructive">{form.formState.errors.description.message}</p>
@@ -312,6 +376,7 @@ export default function CategoryList() {
                 id="image"
                 placeholder="https://example.com/category-image.jpg"
                 {...form.register('image')}
+                disabled={form.formState.isSubmitting}
               />
               {form.formState.errors.image && (
                 <p className="text-sm text-destructive">{form.formState.errors.image.message}</p>
@@ -328,54 +393,72 @@ export default function CategoryList() {
                 maxImages={1}
                 folder="categories"
               />
-              <p className="text-xs text-muted-foreground">
-                Upload sets the Image URL automatically.
-              </p>
+              <p className="text-xs text-muted-foreground">Upload sets the Image URL automatically.</p>
             </div>
 
-            <div className="rounded-lg border p-4 space-y-4">
-              <div>
-                <h3 className="font-medium">Optional Subcategory</h3>
-                <p className="text-sm text-muted-foreground">
-                  {editingSubcategory
-                    ? 'Update the selected subcategory here, or cancel to stop editing it.'
-                    : 'Add one subcategory along with this category. Leave blank to skip.'}
+            {editingSubcategory ? (
+              <div className="rounded-lg border p-4 space-y-4">
+                <div>
+                  <h3 className="font-medium">Edit Subcategory</h3>
+                  <p className="text-sm text-muted-foreground">Update the selected subcategory here.</p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="subcategoryName">Subcategory Name</Label>
+                    <Input
+                      id="subcategoryName"
+                      placeholder="Summer Collection"
+                      {...form.register('subcategoryName')}
+                      disabled={form.formState.isSubmitting}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="subcategorySlug">Subcategory Slug</Label>
+                    <Input
+                      id="subcategorySlug"
+                      placeholder="summer-collection"
+                      {...form.register('subcategorySlug')}
+                      disabled={form.formState.isSubmitting}
+                    />
+                    {form.formState.errors.subcategorySlug && (
+                      <p className="text-sm text-destructive">{form.formState.errors.subcategorySlug.message}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="subcategoriesInput">{editingId ? 'Add Subcategories' : 'Subcategories'}</Label>
+                <Textarea
+                  id="subcategoriesInput"
+                  placeholder={'Summer Collection\nParty Wear\nFestive Picks'}
+                  className="min-h-[120px]"
+                  {...form.register('subcategoriesInput')}
+                  disabled={form.formState.isSubmitting}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter one subcategory per line or separate them with commas.
+                  {editingId
+                    ? ' Existing subcategories stay unchanged; only new ones will be added.'
+                    : ' These will be created immediately after the category is created.'}
                 </p>
               </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="subcategoryName">Subcategory Name</Label>
-                  <Input
-                    id="subcategoryName"
-                    placeholder="Summer Collection"
-                    {...form.register('subcategoryName')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="subcategorySlug">Subcategory Slug</Label>
-                  <Input
-                    id="subcategorySlug"
-                    placeholder="summer-collection"
-                    {...form.register('subcategorySlug')}
-                  />
-                  {form.formState.errors.subcategorySlug && (
-                    <p className="text-sm text-destructive">
-                      {form.formState.errors.subcategorySlug.message}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+            )}
 
             <div className="flex justify-end gap-2">
               {editingId && (
-                <Button type="button" variant="outline" onClick={cancelEdit}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={cancelEdit}
+                  disabled={form.formState.isSubmitting}
+                >
                   Cancel
                 </Button>
               )}
-              <Button type="submit">
+              <Button type="submit" disabled={form.formState.isSubmitting}>
                 {editingSubcategory
                   ? 'Update Category & Subcategory'
                   : editingId
@@ -395,15 +478,14 @@ export default function CategoryList() {
                 <div className="flex-1">
                   <CardTitle className="text-lg">{category.name}</CardTitle>
                   <p className="text-sm text-muted-foreground">{category.slug}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {(category.subcategories || []).length} subcategories
+                  </p>
                 </div>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 hover:bg-muted"
-                    >
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted">
                       <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -433,18 +515,13 @@ export default function CategoryList() {
             </CardHeader>
             <CardContent className="space-y-2">
               {category.image && (
-                <img
-                  src={category.image}
-                  alt={category.name}
-                  className="w-full h-40 object-cover rounded-md"
-                />
+                <img src={category.image} alt={category.name} className="w-full h-40 object-cover rounded-md" />
               )}
               <p className="text-sm text-muted-foreground">{category.description}</p>
+
               {category.subcategories && category.subcategories.length > 0 && (
                 <div className="pt-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Subcategories
-                  </p>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Subcategories</p>
                   <div className="mt-2 space-y-2">
                     {category.subcategories.map((subcategory) => (
                       <div
@@ -455,14 +532,10 @@ export default function CategoryList() {
                           <p className="text-sm font-medium">{subcategory.name}</p>
                           <p className="text-xs text-muted-foreground">{subcategory.slug}</p>
                         </div>
+
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 hover:bg-muted"
-                            >
+                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted">
                               <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                             </Button>
                           </DropdownMenuTrigger>
@@ -498,11 +571,7 @@ export default function CategoryList() {
         ))}
       </div>
 
-      <Button
-        variant="outline"
-        className="w-full"
-        onClick={() => navigate('/products/add')}
-      >
+      <Button variant="outline" className="w-full" onClick={() => navigate('/products/add')}>
         <Plus className="h-4 w-4 mr-2" />
         Add New Category (Quick)
       </Button>

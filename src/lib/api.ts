@@ -1,4 +1,16 @@
-import type { Product, Order, ProductsData, OrdersData, SettingsData, DeliverySettingsData, Category, Customer, AdminUser, Subcategory } from '@/types'
+import type {
+  Product,
+  ProductPayload,
+  Order,
+  ProductsData,
+  OrdersData,
+  SettingsData,
+  DeliverySettingsData,
+  Category,
+  Customer,
+  AdminUser,
+  Subcategory,
+} from '@/types'
 
 // Default to same-origin so dev tunnels (e.g. LocalTunnel/Ngrok) work via the Vite proxy.
 // If `VITE_API_URL` points to localhost but the app is opened from a non-localhost hostname
@@ -18,11 +30,6 @@ const generateId = () => {
 const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('admin_token')
   return token ? { Authorization: `Bearer ${token}` } : {}
-}
-
-type ProductPayload = Omit<Product, 'id' | 'createdAt' | 'updatedAt' | 'category' | 'subcategory'> & {
-  categoryId: string
-  subcategoryId?: string | null
 }
 
 type CategoryPayload = Pick<Category, 'name' | 'slug' | 'description' | 'image'>
@@ -90,6 +97,10 @@ export const productsApi = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(category),
     })
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || 'Failed to create category')
+    }
     const data = await response.json()
     return data.category || data
   },
@@ -121,6 +132,10 @@ export const productsApi = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(subcategory),
     })
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.error || 'Failed to create subcategory')
+    }
     const data = await response.json()
     return data.subcategory || data
   },
@@ -131,6 +146,8 @@ export const productsApi = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(subcategory),
     })
+    if (!response.ok) return null
+
     if (response.ok) {
       const data = await response.json()
       return data.subcategory || data
