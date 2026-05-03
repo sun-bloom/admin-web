@@ -1,4 +1,16 @@
-import type { Product, Order, ProductsData, OrdersData, SettingsData, DeliverySettingsData, Category, Customer, AdminUser, Subcategory } from '@/types'
+import type {
+  Product,
+  ProductPayload,
+  Order,
+  ProductsData,
+  OrdersData,
+  SettingsData,
+  DeliverySettingsData,
+  Category,
+  Customer,
+  AdminUser,
+  Subcategory,
+} from '@/types'
 
 // Default to same-origin so dev tunnels (e.g. LocalTunnel/Ngrok) work via the Vite proxy.
 // If `VITE_API_URL` points to localhost but the app is opened from a non-localhost hostname
@@ -41,7 +53,7 @@ export const productsApi = {
     return data.products.find((p: Product) => p.slug === slug)
   },
 
-  async create(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
+  async create(product: ProductPayload): Promise<Product> {
     const response = await fetch(`${API_BASE_URL}/api/products`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -50,7 +62,7 @@ export const productsApi = {
     return response.json()
   },
 
-  async update(id: string, data: Partial<Product>): Promise<Product | null> {
+  async update(id: string, data: Partial<ProductPayload>): Promise<Product | null> {
     const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
