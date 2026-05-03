@@ -388,17 +388,15 @@ export default function ProductEdit() {
                     />
                     <Label>Available for sale</Label>
 
-                    {index > 0 && (
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => removeVariant(index)}
-                        disabled={isSaving}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => removeVariant(index)}
+                      disabled={isSaving}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
                   </div>
                 </Card>
               ))}
