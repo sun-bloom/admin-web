@@ -1,17 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { productSchema } from '@/lib/validators'
+import { productSchema, type ProductFormData } from '@/lib/validators'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ImageUpload } from '@/components/common/ImageUpload'
 import { toast } from 'sonner'
-import { API_BASE_URL, productsApi } from '@/lib/api'
+import { productsApi } from '@/lib/api'
 import { Package, Plus, X, Save, ArrowLeft, Loader2 } from 'lucide-react'
-import type { Category } from '@/types'
+import type { Category, Subcategory } from '@/types'
 
 export default function ProductEdit() {
   const { id } = useParams()
@@ -22,12 +22,13 @@ export default function ProductEdit() {
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [images, setImages] = useState<string[]>([])
 
-  const form = useForm({
+  const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: {
       name: '',
       slug: '',
-      category: '',
+      categoryId: '',
+      subcategoryId: '',
       description: '',
       basePrice: 0,
       images: [],
@@ -37,6 +38,11 @@ export default function ProductEdit() {
   })
 
   const variants = form.watch('variants')
+  const selectedCategoryId = form.watch('categoryId')
+
+  const availableSubcategories = useMemo<Subcategory[]>(() => {
+    return categories.find((category) => category.id === selectedCategoryId)?.subcategories || []
+  }, [categories, selectedCategoryId])
 
   useEffect(() => {
     const loadProduct = async () => {
@@ -55,21 +61,25 @@ export default function ProductEdit() {
         }
 
         const productImages = product.images || []
-	        setImages(productImages)
-	        form.reset({
-	          name: product.name,
-	          slug: product.slug,
-	          category:
-	            typeof product.category === 'string'
-	              ? (product.categoryId || '')
-	              : (product.category?.id || product.categoryId || ''),
-	          description: product.description,
-	          basePrice: product.basePrice,
-	          images: productImages,
-	          variants: product.variants,
+        setImages(productImages)
+        form.reset({
+          name: product.name,
+          slug: product.slug,
+          categoryId:
+            typeof product.category === 'string'
+              ? (product.categoryId || '')
+              : (product.category?.id || product.categoryId || ''),
+          subcategoryId:
+            typeof product.subcategory === 'string'
+              ? (product.subcategoryId || '')
+              : (product.subcategory?.id || product.subcategoryId || ''),
+          description: product.description,
+          basePrice: product.basePrice,
+          images: productImages,
+          variants: product.variants,
           isActive: product.isActive,
         })
-      } catch (error) {
+      } catch {
         toast.error('Failed to load product')
       } finally {
         setIsLoading(false)
@@ -78,9 +88,8 @@ export default function ProductEdit() {
 
     const loadCategories = async () => {
       try {
-        const data = await fetch(`${API_BASE_URL}/api/categories`)
-        const json = await data.json()
-        setCategories(json.categories)
+        const data = await productsApi.getCategories()
+        setCategories(data)
       } catch (error) {
         console.error('Failed to load categories:', error)
       } finally {
@@ -90,7 +99,20 @@ export default function ProductEdit() {
 
     loadProduct()
     loadCategories()
-  }, [id, navigate])
+  }, [form, id, navigate])
+
+  useEffect(() => {
+    const currentSubcategoryId = form.getValues('subcategoryId')
+    if (!currentSubcategoryId) return
+
+    const subcategoryExists = availableSubcategories.some(
+      (subcategory) => subcategory.id === currentSubcategoryId
+    )
+
+    if (!subcategoryExists) {
+      form.setValue('subcategoryId', '')
+    }
+  }, [availableSubcategories, form, selectedCategoryId])
 
   const addVariant = () => {
     const current = form.getValues('variants')
@@ -105,7 +127,7 @@ export default function ProductEdit() {
     form.setValue('variants', current.filter((_, i) => i !== index))
   }
 
-  const onSubmit = async (data: any) => {
+  const onSubmit = async (data: ProductFormData) => {
     if (!id) {
       toast.error('Product ID not found')
       return
@@ -113,7 +135,10 @@ export default function ProductEdit() {
 
     setIsSaving(true)
     try {
-      await productsApi.update(id, data)
+      await productsApi.update(id, {
+        ...data,
+        subcategoryId: data.subcategoryId || null,
+      })
       toast.success('Product updated successfully')
       navigate('/products')
     } catch (error) {
@@ -185,7 +210,9 @@ export default function ProductEdit() {
                 <select
                   id="category"
                   className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                  {...form.register('category')}
+                  {...form.register('categoryId', {
+                    onChange: () => form.setValue('subcategoryId', ''),
+                  })}
                   disabled={isSaving}
                 >
                   <option value="">Select category</option>
@@ -199,11 +226,38 @@ export default function ProductEdit() {
                     ))
                   )}
                 </select>
-                {form.formState.errors.category && (
-                  <p className="text-sm text-destructive">{form.formState.errors.category.message}</p>
+                {form.formState.errors.categoryId && (
+                  <p className="text-sm text-destructive">{form.formState.errors.categoryId.message}</p>
                 )}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="subcategory">Subcategory</Label>
+                <select
+                  id="subcategory"
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm"
+                  {...form.register('subcategoryId')}
+                  disabled={isSaving || !selectedCategoryId || categoriesLoading}
+                >
+                  <option value="">No subcategory</option>
+                  {availableSubcategories.map((subcategory) => (
+                    <option key={subcategory.id} value={subcategory.id}>
+                      {subcategory.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Optional. Change category to refresh available subcategories.
+                </p>
+                {form.formState.errors.subcategoryId && (
+                  <p className="text-sm text-destructive">
+                    {form.formState.errors.subcategoryId.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="basePrice">Base Price (₹) *</Label>
                 <Input
@@ -276,7 +330,7 @@ export default function ProductEdit() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {variants.map((variant: any, index: number) => (
+              {variants.map((_: ProductFormData['variants'][number], index: number) => (
                 <Card key={index} className="p-4 border">
                   <div className="grid gap-4 md:grid-cols-2 mb-3">
                     <div className="space-y-2">

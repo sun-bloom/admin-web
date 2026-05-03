@@ -24,13 +24,13 @@ export function useProducts() {
     fetchProducts()
   }, [fetchProducts])
 
-  const createProduct = async (product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const createProduct = async (product: Parameters<typeof productsApi.create>[0]) => {
     const newProduct = await productsApi.create(product)
     setProducts(prev => [...prev, newProduct])
     return newProduct
   }
 
-  const updateProduct = async (id: string, data: Partial<Product>) => {
+  const updateProduct = async (id: string, data: Parameters<typeof productsApi.update>[1]) => {
     const updated = await productsApi.update(id, data)
     if (updated) {
       setProducts(prev => prev.map(p => p.id === id ? updated : p))

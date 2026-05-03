@@ -32,6 +32,11 @@ const getAuthHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+type CategoryPayload = Pick<Category, 'name' | 'slug' | 'description' | 'image'>
+type SubcategoryPayload = Pick<Subcategory, 'name' | 'categoryId'> & {
+  slug?: string
+}
+
 export const productsApi = {
   async getAll(): Promise<Product[]> {
     const response = await fetch(`${API_BASE_URL}/api/products`)
@@ -86,63 +91,76 @@ export const productsApi = {
     return data.categories || []
   },
 
-  async createCategory(category: Omit<Category, 'id' | 'subcategories'>): Promise<Category> {
+  async createCategory(category: CategoryPayload): Promise<Category> {
     const response = await fetch(`${API_BASE_URL}/api/categories`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(category),
     })
-
     if (!response.ok) {
       const error = await response.json().catch(() => null)
       throw new Error(error?.error || 'Failed to create category')
     }
-
-    return response.json()
+    const data = await response.json()
+    return data.category || data
   },
 
-  async updateCategory(id: string, category: Partial<Omit<Category, 'id' | 'subcategories'>>): Promise<Category> {
+  async updateCategory(id: string, category: CategoryPayload): Promise<Category | null> {
     const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(category),
     })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.error || 'Failed to update category')
+    if (response.ok) {
+      const data = await response.json()
+      return data.category || data
     }
-
-    return response.json()
+    return null
   },
 
-  async deleteCategory(id: string): Promise<void> {
+  async deleteCategory(id: string): Promise<boolean> {
     const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
       method: 'DELETE',
       headers: { ...getAuthHeaders() },
     })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.error || 'Failed to delete category')
-    }
+    return response.ok
   },
 
-  async createSubcategory(
-    subcategory: Pick<Subcategory, 'name' | 'slug' | 'categoryId'>
-  ): Promise<Subcategory> {
+  async createSubcategory(subcategory: SubcategoryPayload): Promise<Subcategory> {
     const response = await fetch(`${API_BASE_URL}/api/subcategories`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(subcategory),
     })
-
     if (!response.ok) {
       const error = await response.json().catch(() => null)
       throw new Error(error?.error || 'Failed to create subcategory')
     }
+    const data = await response.json()
+    return data.subcategory || data
+  },
 
-    return response.json()
+  async updateSubcategory(id: string, subcategory: Partial<SubcategoryPayload>): Promise<Subcategory | null> {
+    const response = await fetch(`${API_BASE_URL}/api/subcategories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(subcategory),
+    })
+    if (!response.ok) return null
+
+    if (response.ok) {
+      const data = await response.json()
+      return data.subcategory || data
+    }
+    return null
+  },
+
+  async deleteSubcategory(id: string): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/api/subcategories/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() },
+    })
+    return response.ok
   },
 
   async getLowStock(threshold: number = 5): Promise<Product[]> {

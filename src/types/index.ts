@@ -44,6 +44,7 @@ export interface Product {
   slug: string
   category: string | Category
   categoryId: string
+  subcategory?: string | Subcategory | null
   subcategoryId?: string | null
   description: string
   basePrice: number
@@ -60,7 +61,6 @@ export type ProductPayload = Omit<
 > & {
   variants: VariantPayload[]
 }
-
 export interface Subcategory {
   id: string
   name: string
