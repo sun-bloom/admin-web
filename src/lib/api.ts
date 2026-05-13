@@ -64,6 +64,13 @@ export const productsApi = {
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(product),
     })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      // Backend typically returns { error, details, fields }
+      throw new Error(error?.details || error?.error || 'Failed to create product')
+    }
+
     return response.json()
   },
 
