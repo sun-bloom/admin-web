@@ -12,15 +12,39 @@ export const productSchema = z.object({
   subcategoryId: z.string().optional().nullable(),
   description: z.string().min(10, 'Description must be at least 10 characters'),
   basePrice: z.number().min(0, 'Price must be positive'),
-  images: z.array(z.string().url('Invalid image URL')).min(1, 'At least one image is required'),
-  variants: z.array(z.object({
-    color: z.string().min(1, 'Color is required'),
-    pattern: z.string().min(1, 'Pattern is required'),
-    stock: z.number().min(0, 'Stock cannot be negative'),
-    additionalPrice: z.number().min(0, 'Additional price cannot be negative'),
-    sku: z.string().min(1, 'SKU is required'),
-    isAvailable: z.boolean(),
-  })).min(1, 'At least one variant is required'),
+  // Product images are deprecated in favor of per-variant images; keep but do not require.
+  // Keep the field required in the form type to satisfy react-hook-form typing.
+  images: z.array(z.string().url('Invalid image URL')),
+  variants: z
+    .array(
+      z.object({
+        color: z.string().min(1, 'Color is required'),
+        pattern: z.string().min(1, 'Pattern is required'),
+        stock: z.number().min(0, 'Stock cannot be negative'),
+        additionalPrice: z.number().min(0, 'Additional price cannot be negative'),
+        sku: z.string().min(1, 'SKU is required'),
+        images: z
+          .array(z.string().url('Invalid image URL'))
+          .min(1, 'At least one image is required for each variant'),
+        isAvailable: z.boolean(),
+      })
+    )
+    .min(1, 'At least one variant is required')
+    .superRefine((variants, ctx) => {
+      // Enforce uniqueness of (color, pattern) within a product.
+      const seen = new Set<string>();
+      variants.forEach((v, index) => {
+        const key = `${String(v.color).trim().toLowerCase()}__${String(v.pattern).trim().toLowerCase()}`;
+        if (seen.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Duplicate variant (color + pattern) is not allowed',
+            path: [index, 'pattern'],
+          });
+        }
+        seen.add(key);
+      });
+    }),
   isActive: z.boolean(),
 })
 

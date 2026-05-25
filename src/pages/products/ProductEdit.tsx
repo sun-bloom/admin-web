@@ -118,7 +118,7 @@ export default function ProductEdit() {
     const current = form.getValues('variants')
     form.setValue('variants', [
       ...current,
-      { color: '', pattern: '', stock: 0, additionalPrice: 0, sku: '', isAvailable: true },
+      { color: '', pattern: '', stock: 0, additionalPrice: 0, sku: '', images: [], isAvailable: true },
     ])
   }
 
@@ -287,20 +287,7 @@ export default function ProductEdit() {
                 )}
             </div>
 
-            <div className="space-y-2">
-              <Label>Product Images *</Label>
-              <ImageUpload
-                value={images}
-                onChange={(urls) => {
-                  setImages(urls)
-                  form.setValue('images', urls)
-                }}
-                maxImages={5}
-              />
-              {form.formState.errors.images && (
-                <p className="text-sm text-destructive">{form.formState.errors.images.message}</p>
-              )}
-            </div>
+            {/* Product images are deprecated in favor of per-variant images. */}
 
             <div className="flex items-center space-x-2">
               <input
@@ -397,6 +384,21 @@ export default function ProductEdit() {
                     >
                       <X className="h-4 w-4" />
                     </Button>
+                  </div>
+
+                  <div className="space-y-2 mt-4">
+                    <Label>Variant Images *</Label>
+                    <ImageUpload
+                      value={form.watch(`variants.${index}.images`) || []}
+                      onChange={(urls) => form.setValue(`variants.${index}.images`, urls)}
+                      maxImages={5}
+                      folder="variants"
+                    />
+                    {form.formState.errors.variants?.[index]?.images && (
+                      <p className="text-sm text-destructive">
+                        {form.formState.errors.variants[index]?.images?.message as string}
+                      </p>
+                    )}
                   </div>
                 </Card>
               ))}
