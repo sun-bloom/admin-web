@@ -74,14 +74,15 @@ export const productsApi = {
     return response.json()
   },
 
-  async update(id: string, data: Partial<ProductPayload>): Promise<Product | null> {
+  async update(id: string, data: Partial<ProductPayload>): Promise<Product> {
     const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(data),
     })
     if (response.ok) return await response.json()
-    return null
+    const error = await response.json().catch(() => null)
+    throw new Error(error?.details || error?.error || 'Failed to update product')
   },
 
   async delete(id: string): Promise<boolean> {

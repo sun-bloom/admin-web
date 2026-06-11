@@ -11,7 +11,7 @@ import { ImageUpload } from '@/components/common/ImageUpload'
 import { toast } from 'sonner'
 import { productsApi } from '@/lib/api'
 import { Package, Plus, X, Save, ArrowLeft, Loader2 } from 'lucide-react'
-import type { Category, Subcategory } from '@/types'
+import type { Category, Subcategory, Variant } from '@/types'
 
 export default function ProductEdit() {
   const { id } = useParams()
@@ -21,6 +21,7 @@ export default function ProductEdit() {
   const [categories, setCategories] = useState<Category[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [images, setImages] = useState<string[]>([])
+  const [archivedVariants, setArchivedVariants] = useState<Variant[]>([])
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -62,6 +63,10 @@ export default function ProductEdit() {
 
         const productImages = product.images || []
         setImages(productImages)
+        const allVariants = product.variants || []
+        const activeVariants = allVariants.filter((v) => !(v.isAvailable === false && v.stock === 0))
+        const archived = allVariants.filter((v) => v.isAvailable === false && v.stock === 0)
+        setArchivedVariants(archived)
         form.reset({
           name: product.name,
           slug: product.slug,
@@ -76,7 +81,7 @@ export default function ProductEdit() {
           description: product.description,
           basePrice: product.basePrice,
           images: productImages,
-          variants: product.variants,
+          variants: activeVariants,
           isActive: product.isActive,
         })
       } catch {
@@ -412,6 +417,26 @@ export default function ProductEdit() {
             </div>
           </CardContent>
         </Card>
+
+        {archivedVariants.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Archived Variants</CardTitle>
+              <CardDescription>Removed variants preserved because they appear in past orders</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {archivedVariants.map((v) => (
+                  <div key={v.id} className="p-3 border rounded-md bg-muted/30 flex flex-wrap gap-6 text-sm text-muted-foreground">
+                    <span><span className="font-medium text-foreground">SKU:</span> {v.sku}</span>
+                    <span><span className="font-medium text-foreground">Color:</span> {v.color}</span>
+                    <span><span className="font-medium text-foreground">Pattern:</span> {v.pattern}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <CardFooter className="flex justify-between px-6 py-4">
           <Button type="submit" disabled={isSaving || variants.length === 0}>
