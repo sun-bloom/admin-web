@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import { ImageUpload } from '@/components/common/ImageUpload'
 import { toast } from 'sonner'
 import { productsApi } from '@/lib/api'
 import { Package, Plus, X, Save, ArrowLeft, Loader2 } from 'lucide-react'
-import type { Category, Subcategory, Variant } from '@/types'
+import type { Category, Subcategory } from '@/types'
 
 export default function ProductEdit() {
   const { id } = useParams()
@@ -21,7 +22,6 @@ export default function ProductEdit() {
   const [categories, setCategories] = useState<Category[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
   const [images, setImages] = useState<string[]>([])
-  const [archivedVariants, setArchivedVariants] = useState<Variant[]>([])
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -63,10 +63,6 @@ export default function ProductEdit() {
 
         const productImages = product.images || []
         setImages(productImages)
-        const allVariants = product.variants || []
-        const activeVariants = allVariants.filter((v) => !(v.isAvailable === false && v.stock === 0))
-        const archived = allVariants.filter((v) => v.isAvailable === false && v.stock === 0)
-        setArchivedVariants(archived)
         form.reset({
           name: product.name,
           slug: product.slug,
@@ -81,7 +77,7 @@ export default function ProductEdit() {
           description: product.description,
           basePrice: product.basePrice,
           images: productImages,
-          variants: activeVariants,
+          variants: product.variants || [],
           isActive: product.isActive,
         })
       } catch {
@@ -322,15 +318,21 @@ export default function ProductEdit() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {variants.map((_: ProductFormData['variants'][number], index: number) => (
-                <Card key={index} className="p-4 border">
+              {variants.map((v: ProductFormData['variants'][number], index: number) => {
+                const isArchived = v.isAvailable === false && v.stock === 0
+                const fieldDisabled = isSaving || isArchived
+                return (
+                <Card key={v.id ?? index} className={cn('p-4 border', isArchived && 'opacity-60 bg-muted/20')}>
+                  {isArchived && (
+                    <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Archived — preserved for order history</p>
+                  )}
                   <div className="grid gap-4 md:grid-cols-2 mb-3">
                     <div className="space-y-2">
                       <Label>Color *</Label>
                       <Input
                         placeholder="Red"
                         {...form.register(`variants.${index}.color`)}
-                        disabled={isSaving}
+                        disabled={fieldDisabled}
                       />
                     </div>
                     <div className="space-y-2">
@@ -338,7 +340,7 @@ export default function ProductEdit() {
                       <Input
                         placeholder="Solid"
                         {...form.register(`variants.${index}.pattern`)}
-                        disabled={isSaving}
+                        disabled={fieldDisabled}
                       />
                     </div>
                   </div>
@@ -350,7 +352,7 @@ export default function ProductEdit() {
                         type="number"
                         placeholder="10"
                         {...form.register(`variants.${index}.stock`, { valueAsNumber: true })}
-                        disabled={isSaving}
+                        disabled={fieldDisabled}
                       />
                     </div>
                     <div className="space-y-2">
@@ -359,7 +361,7 @@ export default function ProductEdit() {
                         type="number"
                         placeholder="0"
                         {...form.register(`variants.${index}.additionalPrice`, { valueAsNumber: true })}
-                        disabled={isSaving}
+                        disabled={fieldDisabled}
                       />
                     </div>
                     <div className="space-y-2">
@@ -367,7 +369,7 @@ export default function ProductEdit() {
                       <Input
                         placeholder="CT001-RED-01"
                         {...form.register(`variants.${index}.sku`)}
-                        disabled={isSaving}
+                        disabled={fieldDisabled}
                       />
                     </div>
                   </div>
@@ -376,7 +378,7 @@ export default function ProductEdit() {
                     <input
                       type="checkbox"
                       {...form.register(`variants.${index}.isAvailable`)}
-                      disabled={isSaving}
+                      disabled={fieldDisabled}
                     />
                     <Label>Available for sale</Label>
 
@@ -385,7 +387,7 @@ export default function ProductEdit() {
                       variant="destructive"
                       size="sm"
                       onClick={() => removeVariant(index)}
-                      disabled={isSaving}
+                      disabled={isSaving || isArchived}
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -406,9 +408,10 @@ export default function ProductEdit() {
                     )}
                   </div>
                 </Card>
-              ))}
+                )
+              })}
 
-              {variants.length === 0 && (
+              {variants.filter(v => !(v.isAvailable === false && v.stock === 0)).length === 0 && (
                 <div className="text-center py-8 text-muted-foreground">
                   <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
                   <p>No variants added yet. Click "Add Variant" to get started.</p>
@@ -418,28 +421,8 @@ export default function ProductEdit() {
           </CardContent>
         </Card>
 
-        {archivedVariants.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Archived Variants</CardTitle>
-              <CardDescription>Removed variants preserved because they appear in past orders</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {archivedVariants.map((v) => (
-                  <div key={v.id} className="p-3 border rounded-md bg-muted/30 flex flex-wrap gap-6 text-sm text-muted-foreground">
-                    <span><span className="font-medium text-foreground">SKU:</span> {v.sku}</span>
-                    <span><span className="font-medium text-foreground">Color:</span> {v.color}</span>
-                    <span><span className="font-medium text-foreground">Pattern:</span> {v.pattern}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         <CardFooter className="flex justify-between px-6 py-4">
-          <Button type="submit" disabled={isSaving || variants.length === 0}>
+          <Button type="submit" disabled={isSaving || variants.filter(v => !(v.isAvailable === false && v.stock === 0)).length === 0}>
             {isSaving ? (
               <>
                 <span className="animate-spin mr-2">⟳</span>

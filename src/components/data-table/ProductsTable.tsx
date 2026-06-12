@@ -14,7 +14,6 @@ import {
 import type { Product } from '@/types';
 import { formatCurrency, cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -26,7 +25,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   MoreHorizontal,
-  Search,
   ArrowUpDown,
   Eye,
   Edit,
@@ -47,7 +45,6 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [globalFilter, setGlobalFilter] = useState('');
 
   const columns = useMemo<ColumnDef<Product>[]>(
     () => [
@@ -127,11 +124,14 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
           </Button>
         ),
         cell: ({ row }) => {
+          const activeVariants = row.original.variants.filter((v) => v.isAvailable !== false);
+          const variantsForPrice = activeVariants.length ? activeVariants : row.original.variants;
+          if (!variantsForPrice.length) return <span className="text-muted-foreground text-sm">—</span>;
           const minPrice = Math.min(
-            ...row.original.variants.map((v) => row.original.basePrice + v.additionalPrice)
+            ...variantsForPrice.map((v) => row.original.basePrice + v.additionalPrice)
           );
           const maxPrice = Math.max(
-            ...row.original.variants.map((v) => row.original.basePrice + v.additionalPrice)
+            ...variantsForPrice.map((v) => row.original.basePrice + v.additionalPrice)
           );
           return (
             <span className="font-medium text-foreground">
@@ -148,7 +148,9 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
           <span className="font-semibold text-foreground">Stock</span>
         ),
         cell: ({ row }) => {
-          const totalStock = row.original.variants.reduce((sum, v) => sum + v.stock, 0);
+          const totalStock = row.original.variants
+            .filter((v) => v.isAvailable !== false)
+            .reduce((sum, v) => sum + v.stock, 0);
           const isLowStock = totalStock < 5;
           return (
             <div className="flex items-center gap-2">
@@ -227,12 +229,10 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
       sorting,
       columnFilters,
       columnVisibility,
-      globalFilter,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -241,18 +241,6 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search products..."
-            value={globalFilter}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-      </div>
-
       <div className="rounded-xl border bg-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
