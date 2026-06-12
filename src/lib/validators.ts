@@ -18,6 +18,7 @@ export const productSchema = z.object({
   variants: z
     .array(
       z.object({
+        id: z.string().optional(),
         color: z.string().min(1, 'Color is required'),
         pattern: z.string().min(1, 'Pattern is required'),
         stock: z.number().min(0, 'Stock cannot be negative'),
@@ -31,9 +32,12 @@ export const productSchema = z.object({
     )
     .min(1, 'At least one variant is required')
     .superRefine((variants, ctx) => {
-      // Enforce uniqueness of (color, pattern) within a product.
+      // Enforce uniqueness of (color, pattern) among active variants only.
+      // Archived variants (isAvailable=false, stock=0) are excluded — they may
+      // share a key with a replacement variant added after archival.
       const seen = new Set<string>();
       variants.forEach((v, index) => {
+        if (v.isAvailable === false && v.stock === 0) return;
         const key = `${String(v.color).trim().toLowerCase()}__${String(v.pattern).trim().toLowerCase()}`;
         if (seen.has(key)) {
           ctx.addIssue({
