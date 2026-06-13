@@ -64,7 +64,11 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
           <div className="flex items-center gap-4">
             <div className="h-14 w-14 rounded-lg overflow-hidden bg-muted flex-shrink-0">
               <img
-                src={row.original.images[0]}
+                src={
+                  row.original.images[0] ||
+                  row.original.variants.find((v) => v.isAvailable)?.images?.[0] ||
+                  row.original.variants[0]?.images?.[0]
+                }
                 alt={row.original.name}
                 className="h-full w-full object-cover"
               />
