@@ -6,22 +6,30 @@ import type {
   OrdersData,
   SettingsData,
   DeliverySettingsData,
+  DeliveryRegion,
   Category,
   Customer,
   AdminUser,
   Subcategory,
 } from '@/types'
 
-// Default to same-origin so dev tunnels (e.g. LocalTunnel/Ngrok) work via the Vite proxy.
-// If `VITE_API_URL` points to localhost but the app is opened from a non-localhost hostname
-// (mobile + tunnel), ignore it so requests go through `/api` proxy instead.
-const ENV_API_URL = (import.meta.env.VITE_API_URL || '').trim()
-const isBrowser = typeof window !== 'undefined'
-const isNonLocalhostOrigin =
-  isBrowser && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-const envPointsToLocalhost = /localhost|127\.0\.0\.1/.test(ENV_API_URL)
+// Render Backend Production URL
+const RENDER_BACKEND_URL = 'https://backend-api-bonr.onrender.com';
+const RAW_ENV_URL = (
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  ''
+).trim();
+const isBrowser = typeof window !== 'undefined';
+const isProductionHost =
+  isBrowser && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+const pointsToLocalhost = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(RAW_ENV_URL);
 
-export const API_BASE_URL = ENV_API_URL && !(isNonLocalhostOrigin && envPointsToLocalhost) ? ENV_API_URL : ''
+// In development, default to '' so requests go through the Vite '/api' proxy.
+// In production on Cloudflare Pages, default to the Render backend URL.
+export const API_BASE_URL = RAW_ENV_URL
+  ? (isProductionHost && pointsToLocalhost ? RENDER_BACKEND_URL : RAW_ENV_URL)
+  : (import.meta.env.DEV ? '' : RENDER_BACKEND_URL);
 
 const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substr(2)
@@ -32,14 +40,18 @@ const getAuthHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-type CategoryPayload = Pick<Category, 'name' | 'slug' | 'description' | 'image'>
+type CategoryPayload = Pick<Category, 'name' | 'slug' | 'description' | 'image' | 'categoryNumber'>
 type SubcategoryPayload = Pick<Subcategory, 'name' | 'categoryId'> & {
   slug?: string
 }
 
 export const productsApi = {
-  async getAll(): Promise<Product[]> {
-    const response = await fetch(`${API_BASE_URL}/api/products`)
+  async getAll(search?: string): Promise<Product[]> {
+    // Use admin endpoint so productNumber is included in the response
+    const query = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''
+    const response = await fetch(`${API_BASE_URL}/api/admin/products${query}`, {
+      headers: { ...getAuthHeaders() },
+    })
     const data = await response.json()
     return data.products
   },
@@ -94,7 +106,9 @@ export const productsApi = {
   },
 
   async getCategories(): Promise<Category[]> {
-    const response = await fetch(`${API_BASE_URL}/api/categories`)
+    const response = await fetch(`${API_BASE_URL}/api/admin/categories`, {
+      headers: { ...getAuthHeaders() },
+    })
     const data = await response.json()
     return data.categories || []
   },
@@ -452,64 +466,154 @@ export const deliveryApi = {
     })
     return response.ok
   },
+
+  async createManagedRegion(region: Partial<DeliveryRegion>) {
+    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(region) })
+    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to create region'); return data
+  },
+  async updateManagedRegion(id: string, region: Partial<DeliveryRegion>) {
+    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(region) })
+    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to update region'); return data
+  },
+  async deleteManagedRegion(id: string) {
+    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions/${id}`, { method: 'DELETE', headers: { ...getAuthHeaders() } })
+    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to delete region'); return data
+  },
+}
+
+export const consultantApi = {
+  async getCount() { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants/count`, { headers: getAuthHeaders() }); return (await r.json()).count as number },
+  async getAll() { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants`, { headers: getAuthHeaders() }); return (await r.json()).requests as any[] },
+  async updateStatus(id: string, status: string) { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ status }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed to update request'); return d.request },
 }
 
 export const authApi = {
-  async login(email: string, password: string): Promise<{ user: AdminUser; token: string } | null> {
-    let response: Response
-    try {
-      // Use form-encoded body to avoid OPTIONS preflight (common tunnel/proxy failure on mobile).
-      const body = new URLSearchParams({ email, password }).toString()
-      response = await fetch(`${API_BASE_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-        body,
-      })
-    } catch (err) {
-      // Most common on mobile+tunnels: preflight/proxy issues surface as a network error.
-      let healthHint = 'unknown'
-      try {
-        const health = await fetch(`${API_BASE_URL}/api/health`, { cache: 'no-store' })
-        healthHint = `${health.status}`
-      } catch {
-        healthHint = 'unreachable'
-      }
-      const apiHint = API_BASE_URL || `${typeof window !== 'undefined' ? window.location.origin : ''} (same-origin)`
-      throw new Error(`Failed to fetch. api=${apiHint}. /api/health=${healthHint}. This usually means the tunnel/proxy is blocking requests (often OPTIONS preflight or VITE_API_URL pointing to localhost).`)
+  async login(email: string, password: string): Promise<{ user: AdminUser; token: string }> {
+    const ALLOWED_ADMIN_EMAILS = ['sunbloomadornwork@gmail.com', 'skavinraj.dev@gmail.com'];
+    const normalizedEmail = email.toLowerCase().trim();
+    if (!ALLOWED_ADMIN_EMAILS.includes(normalizedEmail)) {
+      throw new Error('Access denied. Only authorized admin accounts are permitted to access this dashboard.');
     }
+
+    const { adminLoginWithEmail, adminLogout } = await import('@/lib/firebase');
+    const firebaseUser = await adminLoginWithEmail(normalizedEmail, password);
+    const idToken = await firebaseUser.getIdToken();
+    localStorage.setItem('admin_token', idToken);
+
+    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+      cache: 'no-store',
+    });
 
     if (!response.ok) {
-      let message = `Login failed (${response.status})`
-      try {
-        const error = await response.json()
-        message = error?.error ? `${error.error} (${response.status})` : message
-      } catch {
-        try {
-          const text = await response.text()
-          if (text) message = `${message}: ${text.slice(0, 200)}`
-        } catch {
-          // ignore
-        }
-      }
-      throw new Error(message)
+      localStorage.removeItem('admin_token');
+      await adminLogout().catch(() => {});
+      const errJson = await response.json().catch(() => null);
+      throw new Error(errJson?.message || `Admin authorization failed (${response.status}). Ensure this account has admin permissions.`);
     }
 
-    let result: any
-    try {
-      result = await response.json()
-    } catch {
-      throw new Error('Login failed: invalid JSON response from server')
+    const data = await response.json();
+    const user = (data?.user ?? data) as AdminUser;
+    return { token: idToken, user };
+  },
+
+  async loginWithGoogle(): Promise<{ user: AdminUser; token: string }> {
+    const ALLOWED_ADMIN_EMAILS = ['sunbloomadornwork@gmail.com', 'skavinraj.dev@gmail.com'];
+    const { adminLoginWithGoogle, adminLogout } = await import('@/lib/firebase');
+    const firebaseUser = await adminLoginWithGoogle();
+
+    const email = (firebaseUser.email || '').toLowerCase().trim();
+    if (!ALLOWED_ADMIN_EMAILS.includes(email)) {
+      await adminLogout().catch(() => {});
+      throw new Error(`Access denied (${email || 'unknown'}). Only authorized admin accounts are permitted to access this dashboard.`);
     }
-    localStorage.setItem('admin_token', result.token)
-    return result
+
+    const idToken = await firebaseUser.getIdToken();
+    localStorage.setItem('admin_token', idToken);
+
+    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      localStorage.removeItem('admin_token');
+      await adminLogout().catch(() => {});
+      const errJson = await response.json().catch(() => null);
+      throw new Error(errJson?.message || `Admin authorization failed (${response.status}). Ensure this Google account has admin permissions.`);
+    }
+
+    const data = await response.json();
+    const user = (data?.user ?? data) as AdminUser;
+    return { token: idToken, user };
   },
 
   async getAllUsers(): Promise<AdminUser[]> {
     const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
       headers: { ...getAuthHeaders() },
-    })
-    const data = await response.json()
-    const user = (data?.user ?? data) as AdminUser
-    return [user]
+    });
+    const data = await response.json();
+    const user = (data?.user ?? data) as AdminUser;
+    return [user];
   },
+};
+
+export const mediaApi = {
+  async upload(file: File, folder: string = 'products'): Promise<{ secure_url: string; public_id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', folder);
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/media/upload`, {
+      method: 'POST',
+      headers: {
+        ...getAuthHeaders(),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.message || error?.error || 'Failed to upload image');
+    }
+
+    return response.json();
+  },
+
+  async delete(publicId: string): Promise<boolean> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/media`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ public_id: publicId }),
+    });
+    return response.ok;
+  },
+};
+
+export interface PaymentGatewayStatus {
+  gateway: string;
+  environment: 'sandbox' | 'production';
+  isConfigured: boolean;
+  webhookConfigured: boolean;
+  supportedMethods: string[];
+  appIdConfigured: boolean;
+  secretKeyConfigured: boolean;
+  siteUrl: string;
+  frontendUrl: string;
+  webhookUrl: string;
 }
+
+export const paymentSettingsApi = {
+  async getStatus(): Promise<PaymentGatewayStatus> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/payment-gateway-status`, {
+      headers: { ...getAuthHeaders() },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch payment gateway status');
+    }
+    return await response.json();
+  },
+};

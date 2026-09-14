@@ -77,7 +77,10 @@ export default function ProductEdit() {
           description: product.description,
           basePrice: product.basePrice,
           images: productImages,
-          variants: product.variants || [],
+          variants: (product.variants || []).map((variant) => ({
+            ...variant,
+            variantNumber: variant.variantNumber || '',
+          })),
           isActive: product.isActive,
         })
       } catch {
@@ -119,7 +122,7 @@ export default function ProductEdit() {
     const current = form.getValues('variants')
     form.setValue('variants', [
       ...current,
-      { color: '', pattern: '', stock: 0, additionalPrice: 0, sku: '', images: [], isAvailable: true },
+      { color: '', pattern: '', variantNumber: '', stock: 0, additionalPrice: 0, sku: '', images: [], isAvailable: true },
     ])
   }
 
@@ -365,12 +368,17 @@ export default function ProductEdit() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>SKU *</Label>
+                      <Label>Variant Number *</Label>
                       <Input
-                        placeholder="CT001-RED-01"
-                        {...form.register(`variants.${index}.sku`)}
+                        placeholder="01"
+                        inputMode="numeric"
+                        maxLength={2}
+                        {...form.register(`variants.${index}.variantNumber`)}
                         disabled={fieldDisabled}
                       />
+                      {form.formState.errors.variants?.[index]?.variantNumber && (
+                        <p className="text-sm text-destructive">{form.formState.errors.variants[index]?.variantNumber?.message as string}</p>
+                      )}
                     </div>
                   </div>
 

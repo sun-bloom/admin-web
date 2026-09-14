@@ -16,7 +16,7 @@ export default function ProductList() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const { products, isLoading, error, refetch, deleteProduct } = useProducts();
+  const { products, isLoading, error, refetch, deleteProduct } = useProducts(search);
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this product?')) {
@@ -58,18 +58,11 @@ export default function ProductList() {
 
       if (selectedCategory && categoryName !== selectedCategory) return false;
 
-      if (search) {
-        const query = search.toLowerCase();
-        return (
-          product.name.toLowerCase().includes(query) ||
-          product.description.toLowerCase().includes(query) ||
-          categoryName.toLowerCase().includes(query) ||
-          subcategoryName.toLowerCase().includes(query)
-        );
-      }
+      if (search) return true;
       return true;
     });
   }, [products, search, selectedCategory]);
+
 
   return (
     <div className="space-y-6">
@@ -136,7 +129,7 @@ export default function ProductList() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search products by name, description, category…"
+            placeholder="Search Product Number, ID, slug, name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"

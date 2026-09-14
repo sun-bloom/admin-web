@@ -10,6 +10,7 @@ interface AuthContextType {
   authError: AuthError
   lastMeStatus: number | null
   login: (email: string, password: string) => Promise<void>
+  loginWithGoogle: () => Promise<void>
   logout: () => void
   retry: () => Promise<void>
   isDevMode: boolean
@@ -76,6 +77,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null)
   }
 
+  const loginWithGoogle = async () => {
+    const result = await authApi.loginWithGoogle()
+    if (!result) {
+      throw new Error('Google Login failed')
+    }
+
+    setUser(result.user)
+    setAuthError(null)
+  }
+
   const logout = () => {
     localStorage.removeItem('admin_token')
     setUser(null)
@@ -96,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, authError, lastMeStatus, login, logout, retry, isDevMode: false }}>
+    <AuthContext.Provider value={{ user, isLoading, authError, lastMeStatus, login, loginWithGoogle, logout, retry, isDevMode: false }}>
       {children}
     </AuthContext.Provider>
   )

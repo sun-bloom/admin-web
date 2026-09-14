@@ -21,9 +21,10 @@ export const productSchema = z.object({
         id: z.string().optional(),
         color: z.string().min(1, 'Color is required'),
         pattern: z.string().min(1, 'Pattern is required'),
+        variantNumber: z.string().regex(/^([0-9]{2})$/, 'Variant Number must be 2 digits (01-99)').optional(),
         stock: z.number().min(0, 'Stock cannot be negative'),
         additionalPrice: z.number().min(0, 'Additional price cannot be negative'),
-        sku: z.string().min(1, 'SKU is required'),
+        sku: z.string().optional(),
         images: z
           .array(z.string().url('Invalid image URL'))
           .min(1, 'At least one image is required for each variant'),

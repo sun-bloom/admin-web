@@ -1,12 +1,14 @@
-import { Menu, Bell, Search, Sun, Moon, X } from 'lucide-react';
+import { Menu, Bell, Search, Sun, Moon, X, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface HeaderProps {
   onMenuClick: () => void;
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
+  const { logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
@@ -29,7 +31,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b">
       <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onMenuClick} className="lg:hidden">
+          <Button variant="ghost" size="icon" onClick={onMenuClick} className="lg:hidden" aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </Button>
 
@@ -59,19 +61,30 @@ export function Header({ onMenuClick }: HeaderProps) {
             size="icon"
             onClick={() => setShowMobileSearch(true)}
             className="sm:hidden"
+            aria-label="Search"
           >
             <Search className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={toggleTheme}>
+          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === 'light' ? (
               <Moon className="h-5 w-5" />
             ) : (
               <Sun className="h-5 w-5" />
             )}
           </Button>
-          <Button variant="ghost" size="icon" className="relative">
+          <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
             <Bell className="h-5 w-5" />
             <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full ring-2 ring-background"></span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl px-2.5 py-1.5 transition-colors cursor-pointer"
+            title="Log Out"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline font-medium">Log Out</span>
           </Button>
         </div>
       </div>
@@ -92,6 +105,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               variant="ghost"
               size="icon"
               onClick={() => setShowMobileSearch(false)}
+              aria-label="Close search"
             >
               <X className="h-5 w-5" />
             </Button>

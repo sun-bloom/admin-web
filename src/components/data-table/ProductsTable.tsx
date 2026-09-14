@@ -49,6 +49,22 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
   const columns = useMemo<ColumnDef<Product>[]>(
     () => [
       {
+        accessorKey: 'productNumber',
+        header: () => (
+          <span className="font-semibold text-foreground text-xs">Product Number</span>
+        ),
+        cell: ({ row }) => {
+          const pn = row.original.productNumber;
+          return pn ? (
+            <span className="font-mono text-xs font-semibold text-foreground bg-muted px-2 py-1 rounded">
+              {pn}
+            </span>
+          ) : (
+            <span className="text-muted-foreground text-xs">—</span>
+          );
+        },
+      },
+      {
         accessorKey: 'name',
         header: ({ column }) => (
             <Button
@@ -84,6 +100,7 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
           </div>
         ),
       },
+
       {
         accessorKey: 'category',
         header: () => (
@@ -201,7 +218,7 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
               <DropdownMenuLabel className="text-xs text-muted-foreground">Actions</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild className="cursor-pointer">
-                <Link to={`/products/${row.original.id}`} className="flex items-center">
+                <Link to={`/products/${row.original.id}`} className="flex items-center w-full">
                   <Eye className="mr-2 h-4 w-4 text-muted-foreground" />
                   View
                 </Link>
@@ -247,7 +264,7 @@ export function ProductsTable({ products, onDelete, onEdit }: ProductsTableProps
     <div className="space-y-4">
       <div className="rounded-xl border bg-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-muted/50">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>

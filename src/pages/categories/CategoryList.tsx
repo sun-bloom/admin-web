@@ -1,575 +1,384 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
-import { z } from 'zod'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Trash2, Edit, Loader2, MoreHorizontal } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  Plus,
+  Search,
+  Tag,
+  Edit,
+  Trash2,
+  AlertCircle,
+  RefreshCw,
+  FolderTree,
+  Package,
+  Layers,
+  Sparkles,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { ImageUpload } from '@/components/common/ImageUpload'
+import { Card, CardContent } from '@/components/ui/card'
+import { Breadcrumb } from '@/components/common/Breadcrumb'
+import { EmptyState } from '@/components/common/EmptyState'
+import { PageLoader } from '@/components/common/LoadingSpinner'
 import { toast } from '@/lib/hooks/useToast'
 import { productsApi } from '@/lib/api'
-import type { Category, Subcategory } from '@/types'
-
-const categorySchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  slug: z
-    .string()
-    .min(2, 'Slug must be at least 2 characters')
-    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
-  description: z.string().min(5, 'Description must be at least 5 characters'),
-  image: z.string().url('Must be a valid URL'),
-  subcategoriesInput: z.string().optional(),
-  subcategoryName: z.string().optional(),
-  subcategorySlug: z
-    .string()
-    .regex(/^[a-z0-9-]*$/, 'Subcategory slug can only contain lowercase letters, numbers, and hyphens')
-    .optional(),
-})
-
-type CategoryFormValues = z.infer<typeof categorySchema>
-
-const toSlug = (value: string) =>
-  value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-
-const parseSubcategoryNames = (value: string) => {
-  const uniqueNames = new Map<string, string>()
-
-  value
-    .split(/\r?\n|,/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .forEach((name) => {
-      const normalized = name.toLowerCase()
-      if (!uniqueNames.has(normalized)) uniqueNames.set(normalized, name)
-    })
-
-  return [...uniqueNames.values()]
-}
+import type { Category } from '@/types'
 
 export default function CategoryList() {
   const navigate = useNavigate()
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
-  const form = useForm<CategoryFormValues>({
-    resolver: zodResolver(categorySchema),
-    defaultValues: {
-      name: '',
-      slug: '',
-      description: '',
-      image: '',
-      subcategoriesInput: '',
-      subcategoryName: '',
-      subcategorySlug: '',
-    },
-  })
-
-  const imageValue = form.watch('image')
+  // Category Deletion Modal State
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     loadCategories()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadCategories = async () => {
     try {
+      setIsLoading(true)
+      setError(null)
       const data = await productsApi.getCategories()
       setCategories(data)
-    } catch {
-      toast({ title: 'Failed to load categories', variant: 'destructive' })
+    } catch (err) {
+      console.error('Failed to load categories:', err)
+      setError('Unable to load categories.')
     } finally {
       setIsLoading(false)
     }
   }
 
-  const createSubcategoriesForCategory = async (categoryId: string, names: string[]) => {
-    if (names.length === 0) return { created: 0, failed: 0 }
+  const handleDeleteConfirm = async () => {
+    if (!categoryToDelete) return
 
-    const results = await Promise.allSettled(
-      names.map((name) =>
-        productsApi.createSubcategory({
-          name,
-          slug: toSlug(name),
-          categoryId,
-        })
-      )
-    )
-
-    const failed = results.filter((result) => result.status === 'rejected').length
-
-    return {
-      created: results.length - failed,
-      failed,
-    }
-  }
-
-  const onSubmit = async (data: CategoryFormValues) => {
-    if (editingId) return updateCategory(editingId, data)
-    return addCategory(data)
-  }
-
-  const addCategory = async (data: CategoryFormValues) => {
     try {
-      const createdCategory = await productsApi.createCategory({
-        name: data.name,
-        slug: data.slug,
-        description: data.description,
-        image: data.image,
-      })
-
-      const subcategoryNames = parseSubcategoryNames(data.subcategoriesInput || '')
-      const { created, failed } = await createSubcategoriesForCategory(createdCategory.id, subcategoryNames)
-
-      toast({
-        title: failed > 0 ? 'Category created (partial)' : 'Category created',
-        description:
-          subcategoryNames.length > 0
-            ? `Added ${created}/${subcategoryNames.length} subcategories.`
-            : 'The category has been successfully created.',
-      })
-
-      await loadCategories()
-      form.reset()
-    } catch (error) {
-      toast({
-        title: error instanceof Error ? error.message : 'Failed to create category',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const updateCategory = async (id: string, data: CategoryFormValues) => {
-    try {
-      await productsApi.updateCategory(id, {
-        name: data.name,
-        slug: data.slug,
-        description: data.description,
-        image: data.image,
-      })
-
-      if (editingSubcategory) {
-        const subcategoryName = data.subcategoryName?.trim()
-        if (subcategoryName) {
-          await productsApi.updateSubcategory(editingSubcategory.id, {
-            name: subcategoryName,
-            slug: data.subcategorySlug?.trim() || undefined,
-            categoryId: id,
-          })
-        }
+      setIsDeleting(true)
+      const success = await productsApi.deleteCategory(categoryToDelete.id)
+      if (success) {
         toast({
-          title: 'Category and subcategory updated',
-          description: 'The category and selected subcategory have been successfully updated.',
+          title: 'Category deleted',
+          description: `"${categoryToDelete.name}" and its subcategories were removed.`,
         })
+        setCategoryToDelete(null)
+        await loadCategories()
       } else {
-        const subcategoryNames = parseSubcategoryNames(data.subcategoriesInput || '')
-
-        if (subcategoryNames.length > 0) {
-          const existingCategory = categories.find((category) => category.id === id)
-          const existingNames = new Set(
-            (existingCategory?.subcategories || []).map((subcategory) => subcategory.name.trim().toLowerCase())
-          )
-          const duplicateNames = subcategoryNames.filter((name) => existingNames.has(name.toLowerCase()))
-          if (duplicateNames.length > 0) {
-            toast({
-              title: 'Duplicate subcategories',
-              description: `Already exist: ${duplicateNames.join(', ')}`,
-              variant: 'destructive',
-            })
-            return
-          }
-        }
-
-        const { created, failed } = await createSubcategoriesForCategory(id, subcategoryNames)
-
         toast({
-          title: failed > 0 ? 'Category updated (partial)' : 'Category updated',
-          description:
-            subcategoryNames.length > 0
-              ? `Added ${created}/${subcategoryNames.length} new subcategories.`
-              : 'The category has been successfully updated.',
+          title: 'Failed to delete category',
+          description: 'The server rejected the delete request.',
+          variant: 'destructive',
         })
       }
-
-      await loadCategories()
-      setEditingId(null)
-      setEditingSubcategory(null)
-      form.reset()
-    } catch (error) {
+    } catch (err) {
       toast({
-        title: error instanceof Error ? error.message : 'Failed to update category',
+        title: 'Error deleting category',
+        description: err instanceof Error ? err.message : 'An unexpected error occurred',
         variant: 'destructive',
       })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
-  const deleteCategory = async (id: string) => {
-    if (
-      !confirm(
-        'Are you sure you want to delete this category? This will also remove its products and subcategories.'
-      )
+  // Filter categories by search query
+  const filteredCategories = useMemo(() => {
+    if (!search.trim()) return categories
+    const q = search.toLowerCase()
+    return categories.filter(
+      (cat) =>
+        cat.name.toLowerCase().includes(q) ||
+        cat.slug.toLowerCase().includes(q) ||
+        cat.categoryNumber.includes(q) ||
+        (cat.description && cat.description.toLowerCase().includes(q))
     )
-      return
+  }, [categories, search])
 
-    const success = await productsApi.deleteCategory(id)
-    if (success) {
-      toast({
-        title: 'Category deleted',
-        description: 'The category, its subcategories, and its products have been successfully deleted.',
-      })
-      await loadCategories()
-    } else {
-      toast({ title: 'Failed to delete category', variant: 'destructive' })
-    }
-  }
-
-  const startEdit = (category: Category) => {
-    form.reset({
-      id: category.id,
-      name: category.name,
-      slug: category.slug,
-      description: category.description,
-      image: category.image,
-      subcategoriesInput: '',
-      subcategoryName: '',
-      subcategorySlug: '',
-    })
-    setEditingId(category.id)
-    setEditingSubcategory(null)
-  }
-
-  const startSubcategoryEdit = (category: Category, subcategory: Subcategory) => {
-    form.reset({
-      id: category.id,
-      name: category.name,
-      slug: category.slug,
-      description: category.description,
-      image: category.image,
-      subcategoriesInput: '',
-      subcategoryName: subcategory.name,
-      subcategorySlug: subcategory.slug,
-    })
-    setEditingId(category.id)
-    setEditingSubcategory(subcategory)
-  }
-
-  const deleteSubcategory = async (subcategoryId: string) => {
-    if (!confirm('Are you sure you want to delete this subcategory? Products will keep working without it.'))
-      return
-
-    const success = await productsApi.deleteSubcategory(subcategoryId)
-    if (success) {
-      toast({
-        title: 'Subcategory deleted',
-        description: 'The subcategory has been successfully deleted.',
-      })
-      if (editingSubcategory?.id === subcategoryId) {
-        setEditingSubcategory(null)
-        form.setValue('subcategoryName', '')
-        form.setValue('subcategorySlug', '')
-      }
-      await loadCategories()
-    } else {
-      toast({ title: 'Failed to delete subcategory', variant: 'destructive' })
-    }
-  }
-
-  const cancelEdit = () => {
-    form.reset()
-    setEditingId(null)
-    setEditingSubcategory(null)
-  }
+  // Summary Metrics
+  const totalSubcategories = useMemo(() => {
+    return categories.reduce((sum, cat) => sum + (cat.subcategories?.length || 0), 0)
+  }, [categories])
 
   if (isLoading) {
+    return <PageLoader />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <Breadcrumb className="mb-4" />
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Categories</h1>
+            <p className="text-sm text-muted-foreground mt-1">Manage your product categories</p>
+          </div>
+        </div>
+
+        <Card className="max-w-md mx-auto my-12 rounded-2xl border-destructive/20 bg-destructive/5 text-center p-8">
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-lg font-semibold text-foreground mb-2">{error}</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Failed to connect to the backend server. Please verify the API is running and try again.
+          </p>
+          <Button onClick={loadCategories} className="rounded-xl">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
+        </Card>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 pb-12">
+      <Breadcrumb className="mb-2" />
+
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Categories</h1>
-          <p className="text-muted-foreground">Manage your product categories</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Categories</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage your product categories</p>
         </div>
-        <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
+
+        <Button asChild className="rounded-xl bg-[#C5A059] hover:bg-[#B38F48] text-white font-medium shadow-xs">
+          <Link to="/categories/new">
+            <Plus className="h-4 w-4 mr-2" />
+            Add Category
+          </Link>
+        </Button>
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle>
-              {editingSubcategory ? 'Edit Category & Subcategory' : editingId ? 'Edit Category' : 'Add Category'}
-            </CardTitle>
-            <CardDescription>
-              {editingSubcategory
-                ? 'Update category details and the selected subcategory'
-                : editingId
-                  ? 'Update category details'
-                  : 'Create a new product category'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Category Name *</Label>
-              <Input
-                id="name"
-                placeholder="Crop Tops"
-                {...form.register('name')}
-                disabled={form.formState.isSubmitting}
-              />
-              {form.formState.errors.name && (
-                <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
-              )}
-            </div>
+      {/* Stats and Search Bar (When categories exist) */}
+      {categories.length > 0 && (
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card p-4 rounded-2xl border border-border/80 shadow-xs">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search categories by name or slug..."
+              className="pl-10 h-10 rounded-xl bg-background text-sm"
+            />
+          </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="slug">URL Slug *</Label>
-              <Input
-                id="slug"
-                placeholder="crop-tops"
-                {...form.register('slug')}
-                disabled={form.formState.isSubmitting}
-              />
-              {form.formState.errors.slug && (
-                <p className="text-sm text-destructive">{form.formState.errors.slug.message}</p>
-              )}
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60">
+              <Layers className="h-3.5 w-3.5 text-[#C5A059]" />
+              <span className="font-semibold text-foreground">{categories.length}</span> Categories
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description *</Label>
-              <Textarea
-                id="description"
-                placeholder="A trendy collection of crop tops..."
-                {...form.register('description')}
-                disabled={form.formState.isSubmitting}
-              />
-              {form.formState.errors.description && (
-                <p className="text-sm text-destructive">{form.formState.errors.description.message}</p>
-              )}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted/60">
+              <FolderTree className="h-3.5 w-3.5 text-[#C5A059]" />
+              <span className="font-semibold text-foreground">{totalSubcategories}</span> Subcategories
             </div>
+          </div>
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <Label htmlFor="image">Image URL *</Label>
-              <Input
-                id="image"
-                placeholder="https://example.com/category-image.jpg"
-                {...form.register('image')}
-                disabled={form.formState.isSubmitting}
-              />
-              {form.formState.errors.image && (
-                <p className="text-sm text-destructive">{form.formState.errors.image.message}</p>
-              )}
-            </div>
+      {/* Empty State: 0 categories total */}
+      {categories.length === 0 && (
+        <div className="bg-card rounded-2xl border border-border/80 p-6 shadow-xs">
+          <EmptyState
+            icon={Tag}
+            title="No categories found"
+            description="Organize your store by adding your first product category."
+            action={{
+              label: '+ Add Category',
+              to: '/categories/new',
+            }}
+          />
+        </div>
+      )}
 
-            <div className="space-y-2">
-              <Label>Upload Image</Label>
-              <ImageUpload
-                value={imageValue ? [imageValue] : []}
-                onChange={(urls) => {
-                  form.setValue('image', urls[0] || '', { shouldDirty: true, shouldValidate: true })
-                }}
-                maxImages={1}
-                folder="categories"
-              />
-              <p className="text-xs text-muted-foreground">Upload sets the Image URL automatically.</p>
-            </div>
+      {/* Filtered Empty State (Search gave 0 results) */}
+      {categories.length > 0 && filteredCategories.length === 0 && (
+        <div className="bg-card rounded-2xl border border-border/80 p-12 text-center shadow-xs">
+          <Search className="h-10 w-10 text-muted-foreground/50 mx-auto mb-3" />
+          <h3 className="text-base font-semibold text-foreground">No matching categories</h3>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">
+            No categories matched "{search}". Try searching with a different keyword.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => setSearch('')} className="rounded-xl">
+            Clear Search
+          </Button>
+        </div>
+      )}
 
-            {editingSubcategory ? (
-              <div className="rounded-lg border p-4 space-y-4">
+      {/* Category List / Grid */}
+      {filteredCategories.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredCategories.map((category) => {
+            const subCount = category.subcategories?.length || 0
+
+            return (
+              <Card
+                key={category.id}
+                className="group flex flex-col justify-between overflow-hidden rounded-2xl border border-border/80 bg-card hover:border-[#C5A059]/40 hover:shadow-md transition-all duration-200"
+              >
                 <div>
-                  <h3 className="font-medium">Edit Subcategory</h3>
-                  <p className="text-sm text-muted-foreground">Update the selected subcategory here.</p>
-                </div>
+                  {/* Category Image */}
+                  <div className="relative h-44 w-full overflow-hidden bg-muted/30 border-b border-border/60">
+                    {category.image ? (
+                      <img
+                        src={category.image}
+                        alt={category.name}
+                        className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          // Fallback to stylized placeholder if image fails to load
+                          e.currentTarget.style.display = 'none'
+                          const fallback = e.currentTarget.nextElementSibling as HTMLElement | null
+                          if (fallback) fallback.style.display = 'flex'
+                        }}
+                      />
+                    ) : null}
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="subcategoryName">Subcategory Name</Label>
-                    <Input
-                      id="subcategoryName"
-                      placeholder="Summer Collection"
-                      {...form.register('subcategoryName')}
-                      disabled={form.formState.isSubmitting}
-                    />
+                    {/* Fallback placeholder element */}
+                    <div
+                      style={{ display: category.image ? 'none' : 'flex' }}
+                      className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-tr from-muted/60 to-muted/20 text-muted-foreground"
+                    >
+                      <Tag className="h-8 w-8 mb-2 opacity-40 text-[#C5A059]" />
+                      <span className="text-xs font-medium uppercase tracking-wider opacity-60">No Image</span>
+                    </div>
+
+                    {/* Status Badge */}
+                    <div className="absolute top-3 left-3">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-wide bg-background/90 text-foreground backdrop-blur-xs border border-border/60 shadow-xs">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        Active
+                      </span>
+                    </div>
+
+                    {/* Subcategories count badge */}
+                    <div className="absolute top-3 right-3">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-wide bg-background/90 text-muted-foreground backdrop-blur-xs border border-border/60 shadow-xs">
+                        <FolderTree className="h-3 w-3 text-[#C5A059]" />
+                        {subCount} {subCount === 1 ? 'sub' : 'subs'}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="subcategorySlug">Subcategory Slug</Label>
-                    <Input
-                      id="subcategorySlug"
-                      placeholder="summer-collection"
-                      {...form.register('subcategorySlug')}
-                      disabled={form.formState.isSubmitting}
-                    />
-                    {form.formState.errors.subcategorySlug && (
-                      <p className="text-sm text-destructive">{form.formState.errors.subcategorySlug.message}</p>
+                  {/* Category Details */}
+                  <CardContent className="p-5 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-lg font-bold text-foreground tracking-tight truncate group-hover:text-[#C5A059] transition-colors">
+                          {category.name}
+                        </h3>
+                        <p className="text-sm font-semibold text-[#C5A059] mt-1">Category {category.categoryNumber}</p>
+                        <p className="text-xs font-mono text-muted-foreground mt-0.5 tracking-tight truncate">
+                          /{category.slug}
+                        </p>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed min-h-[32px]">
+                      {category.description || 'No description provided.'}
+                    </p>
+
+                    {/* Subcategories Chips */}
+                    {category.subcategories && category.subcategories.length > 0 ? (
+                      <div className="pt-2 border-t border-border/40">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                          Subcategories
+                        </p>
+                        <div className="flex flex-wrap gap-1.5 max-h-16 overflow-hidden">
+                          {category.subcategories.slice(0, 3).map((sub) => (
+                            <span
+                              key={sub.id}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted/60 text-muted-foreground border border-border/40 truncate max-w-[140px]"
+                            >
+                              {sub.name}
+                            </span>
+                          ))}
+                          {category.subcategories.length > 3 && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-muted/40 text-muted-foreground border border-border/40">
+                              +{category.subcategories.length - 3} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="pt-2 border-t border-border/40">
+                        <p className="text-[11px] text-muted-foreground/60 italic">No subcategories defined</p>
+                      </div>
                     )}
-                  </div>
+                  </CardContent>
                 </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="subcategoriesInput">{editingId ? 'Add Subcategories' : 'Subcategories'}</Label>
-                <Textarea
-                  id="subcategoriesInput"
-                  placeholder={'Summer Collection\nParty Wear\nFestive Picks'}
-                  className="min-h-[120px]"
-                  {...form.register('subcategoriesInput')}
-                  disabled={form.formState.isSubmitting}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter one subcategory per line or separate them with commas.
-                  {editingId
-                    ? ' Existing subcategories stay unchanged; only new ones will be added.'
-                    : ' These will be created immediately after the category is created.'}
-                </p>
-              </div>
-            )}
 
-            <div className="flex justify-end gap-2">
-              {editingId && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={cancelEdit}
-                  disabled={form.formState.isSubmitting}
-                >
-                  Cancel
-                </Button>
-              )}
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {editingSubcategory
-                  ? 'Update Category & Subcategory'
-                  : editingId
-                    ? 'Update Category'
-                    : 'Create Category'}
+                {/* Category Actions Footer */}
+                <div className="px-5 py-3.5 bg-muted/20 border-t border-border/60 flex items-center justify-between gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-xl text-xs flex-1 hover:border-[#C5A059] hover:text-[#C5A059] transition-colors"
+                    onClick={() => navigate(`/categories/${category.id}/edit`)}
+                  >
+                    <Edit className="h-3.5 w-3.5 mr-1.5" />
+                    Edit
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-xl text-xs text-destructive hover:bg-destructive/10 hover:border-destructive/30 transition-colors"
+                    onClick={() => setCategoryToDelete(category)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                    Delete
+                  </Button>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {categoryToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl border border-border space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-destructive/15 text-destructive flex items-center justify-center shrink-0">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-foreground">Delete Category</h3>
+                <p className="text-xs text-muted-foreground">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Are you sure you want to delete <strong className="text-foreground font-semibold">"{categoryToDelete.name}"</strong>?
+              This will also remove any associated subcategories and product category mappings.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl text-xs h-9 px-4"
+                onClick={() => setCategoryToDelete(null)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-xl text-xs h-9 px-4"
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Category'}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      </form>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {categories.map((category) => (
-          <Card key={category.id} className="hover:shadow-md transition-shadow">
-            <CardHeader className="space-y-2">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{category.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{category.slug}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {(category.subcategories || []).length} subcategories
-                  </p>
-                </div>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted">
-                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44 rounded-md border bg-popover p-1 shadow-md">
-                    <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground">
-                      Category Actions
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator className="my-1 h-px bg-border" />
-                    <DropdownMenuItem
-                      onClick={() => startEdit(category)}
-                      className="flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-muted"
-                    >
-                      <Edit className="mr-2 h-4 w-4 text-muted-foreground" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="my-1 h-px bg-border" />
-                    <DropdownMenuItem
-                      onClick={() => deleteCategory(category.id)}
-                      className="flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm text-destructive outline-none hover:bg-destructive/10 focus:text-destructive"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {category.image && (
-                <img src={category.image} alt={category.name} className="w-full h-40 object-cover rounded-md" />
-              )}
-              <p className="text-sm text-muted-foreground">{category.description}</p>
-
-              {category.subcategories && category.subcategories.length > 0 && (
-                <div className="pt-2">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Subcategories</p>
-                  <div className="mt-2 space-y-2">
-                    {category.subcategories.map((subcategory) => (
-                      <div
-                        key={subcategory.id}
-                        className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{subcategory.name}</p>
-                          <p className="text-xs text-muted-foreground">{subcategory.slug}</p>
-                        </div>
-
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 hover:bg-muted">
-                              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48 rounded-md border bg-popover p-1 shadow-md">
-                            <DropdownMenuLabel className="px-2 py-1.5 text-xs text-muted-foreground">
-                              Subcategory Actions
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator className="my-1 h-px bg-border" />
-                            <DropdownMenuItem
-                              onClick={() => startSubcategoryEdit(category, subcategory)}
-                              className="flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-muted"
-                            >
-                              <Edit className="mr-2 h-4 w-4 text-muted-foreground" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator className="my-1 h-px bg-border" />
-                            <DropdownMenuItem
-                              onClick={() => deleteSubcategory(subcategory.id)}
-                              className="flex cursor-pointer items-center rounded-sm px-2 py-1.5 text-sm text-destructive outline-none hover:bg-destructive/10 focus:text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

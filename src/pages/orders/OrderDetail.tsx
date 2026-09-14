@@ -182,20 +182,20 @@ export default function OrderDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 min-w-0">
           <Button variant="outline" onClick={() => navigate('/orders')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Order #{order.orderNumber}</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight break-words">Order #{order.orderNumber}</h1>
+            <p className="text-muted-foreground break-words">
               Placed on {formatDate(order.createdAt)}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           {getStatusBadge(order.orderStatus)}
         </div>
       </div>
@@ -212,7 +212,7 @@ export default function OrderDetail() {
             <CardContent>
               <div className="space-y-4">
                 {order.items.map((item, index) => (
-                  <div key={index} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div key={index} className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg">
                     {item.image && (
                       <img
                         src={item.image}
@@ -220,16 +220,16 @@ export default function OrderDetail() {
                         className="w-16 h-16 object-cover rounded-md"
                       />
                     )}
-                    <div className="flex-1">
-                      <p className="font-medium">{item.productName}</p>
+                    <div className="flex-1 min-w-[9rem]">
+                      <p className="font-medium break-words">{item.productName}</p>
                       <p className="text-sm text-muted-foreground">
                         {item.color} / {item.pattern} × {item.quantity}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        SKU: {item.variantId}
+                        Product Number: {item.productNumber || '—'} · Variant: {item.variantNumber || '—'}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right ml-auto">
                       <p className="font-medium">{formatPrice(item.totalPrice)}</p>
                       <p className="text-sm text-muted-foreground">
                         {formatPrice(item.unitPrice)} each
@@ -267,7 +267,7 @@ export default function OrderDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Name</p>
                   <p className="font-medium">{order.customerName}</p>
@@ -280,7 +280,7 @@ export default function OrderDetail() {
                   <p className="text-sm text-muted-foreground mb-1">Email</p>
                   <p className="font-medium">{order.customerEmail}</p>
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
                     Delivery Address
@@ -313,6 +313,7 @@ export default function OrderDetail() {
                 <Badge className={order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
                   {order.paymentStatus}
                 </Badge>
+                {order.paymentStatus !== 'paid' && <p className="text-xs text-muted-foreground mt-2">Payment not yet confirmed.</p>}
               </div>
               {order.upiTransactionId && (
                 <div>

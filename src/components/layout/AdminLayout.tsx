@@ -17,10 +17,10 @@ export function AdminLayout() {
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       </div>
 
-      <div className="lg:ml-64 min-h-screen flex flex-col">
+      <div className="lg:ml-64 min-w-0 min-h-screen flex flex-col">
         <Header onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+          <div className="max-w-7xl min-w-0 mx-auto">
             <Outlet />
           </div>
         </main>

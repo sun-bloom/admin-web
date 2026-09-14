@@ -31,7 +31,8 @@ export interface Variant {
   pattern: string
   stock: number
   additionalPrice: number
-  sku: string
+  variantNumber?: string | null
+  sku?: string
   images: string[]
   isAvailable: boolean
 }
@@ -44,6 +45,7 @@ export interface Product {
   name: string
   slug: string
   category: string | Category
+  categoryDetails?: Category | null
   categoryId: string
   subcategory?: string | Subcategory | null
   subcategoryId?: string | null
@@ -52,9 +54,12 @@ export interface Product {
   images: string[]
   variants: Variant[]
   isActive: boolean
+  /** Admin-only: business identifier in ###-## format. Never sent to customers. */
+  productNumber?: string | null
   createdAt: string
   updatedAt: string
 }
+
 
 export type ProductPayload = Omit<
   Product,
@@ -73,6 +78,7 @@ export interface Category {
   id: string
   name: string
   slug: string
+  categoryNumber: string
   description: string
   image: string
   subcategories?: Subcategory[]
@@ -91,6 +97,8 @@ export interface OrderItem {
   productId: string
   variantId: string
   productName: string
+  productNumber?: string | null
+  variantNumber?: string | null
   color?: string
   pattern?: string
   quantity: number
@@ -105,6 +113,7 @@ export interface Order {
   orderNumber: string
   customerName: string
   customerPhone: string
+  whatsappNumber?: string | null
   customerEmail: string
   deliveryAddress: string
   city: string
@@ -120,6 +129,7 @@ export interface Order {
   upiTransactionId?: string
   paidAt?: string
   orderStatus: OrderStatus
+  trackingRequested?: boolean
   trackingCarrier?: string
   trackingNumber?: string
   trackingUrl?: string

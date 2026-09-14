@@ -12,6 +12,7 @@ import Dashboard from './pages/dashboard/Dashboard';
 import ProductList from './pages/products/ProductList';
 import ProductAdd from './pages/products/ProductAdd';
 import ProductEdit from './pages/products/ProductEdit';
+import ProductReferenceList from './pages/products/ProductReferenceList';
 
 // Orders
 import OrderList from './pages/orders/OrderList';
@@ -19,15 +20,16 @@ import OrderDetail from './pages/orders/OrderDetail';
 
 // Categories
 import CategoryList from './pages/categories/CategoryList';
+import CategoryForm from './pages/categories/CategoryForm';
 
 // Customers
 import CustomerList from './pages/customers/CustomerList';
 
 // Settings Pages
-import GeneralSettings from './pages/settings/GeneralSettings';
 import DeliverySettings from './pages/settings/DeliverySettings';
 import PaymentSettings from './pages/settings/PaymentSettings';
-import AdminUsers from './pages/settings/AdminUsers';
+import OrderConsultants from './pages/orders/OrderConsultants';
+import SupportPlaceholder from './pages/support/SupportPlaceholder';
 
 // Error Pages
 import NotFound from './pages/errors/NotFound';
@@ -102,25 +104,27 @@ function AppRoutes() {
 
         {/* Products */}
         <Route path="products" element={<ProductList />} />
+        <Route path="product-list" element={<ProductReferenceList />} />
         <Route path="products/add" element={<ProductAdd />} />
         <Route path="products/:id" element={<ProductEdit />} />
 
         {/* Categories */}
         <Route path="categories" element={<CategoryList />} />
+        <Route path="categories/new" element={<CategoryForm />} />
+        <Route path="categories/:id/edit" element={<CategoryForm />} />
 
         {/* Orders */}
         <Route path="orders" element={<OrderList />} />
         <Route path="orders/:id" element={<OrderDetail />} />
+        <Route path="order-consultants" element={<OrderConsultants />} />
 
         {/* Customers */}
         <Route path="customers" element={<CustomerList />} />
 
         {/* Settings */}
-        <Route path="settings" element={<Navigate to="/settings/general" replace />} />
-        <Route path="settings/general" element={<GeneralSettings />} />
+        <Route path="settings" element={<Navigate to="/settings/delivery" replace />} />
         <Route path="settings/delivery" element={<DeliverySettings />} />
         <Route path="settings/payment" element={<PaymentSettings />} />
-        <Route path="settings/users" element={<AdminUsers />} />
       </Route>
 
       {/* 404 */}

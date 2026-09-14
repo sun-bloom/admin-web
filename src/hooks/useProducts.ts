@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { Product } from '@/types'
 import { productsApi } from '@/lib/api'
 
-export function useProducts() {
+export function useProducts(search = '') {
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -10,7 +10,7 @@ export function useProducts() {
   const fetchProducts = useCallback(async () => {
     setIsLoading(true)
     try {
-      const data = await productsApi.getAll()
+      const data = await productsApi.getAll(search)
       setProducts(data)
       setError(null)
     } catch (err) {
@@ -18,7 +18,7 @@ export function useProducts() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [search])
 
   useEffect(() => {
     fetchProducts()

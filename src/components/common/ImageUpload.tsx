@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { Upload, X, Loader2, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { mediaApi } from '@/lib/api';
 
 interface ImageUploadProps {
   value: string[];
@@ -9,15 +10,6 @@ interface ImageUploadProps {
   maxImages?: number;
   folder?: string;
   className?: string;
-}
-
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-  throw new Error(
-    'Missing Cloudinary environment variables. Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your .env file.'
-  );
 }
 
 export function ImageUpload({
@@ -30,30 +22,34 @@ export function ImageUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [dragOver, setDragOver] = useState(false);
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [inputError, setInputError] = useState<string | null>(null);
+
+  const handleAddUrl = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setInputError(null);
+    const trimmed = imageUrlInput.trim();
+    if (!trimmed) return;
+
+    try {
+      new URL(trimmed);
+    } catch {
+      setInputError('Please enter a valid HTTP/HTTPS image URL');
+      return;
+    }
+
+    if (value.length >= maxImages) {
+      setInputError(`Maximum ${maxImages} images reached`);
+      return;
+    }
+
+    onChange([...value, trimmed]);
+    setImageUrlInput('');
+  };
 
   const uploadToCloudinary = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    if (folder) {
-      formData.append('folder', folder);
-    }
-
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-      {
-        method: 'POST',
-        body: formData,
-      }
-    );
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'Upload failed');
-    }
-
-    const data = await response.json();
-    return data.secure_url;
+    const result = await mediaApi.upload(file, folder);
+    return result.secure_url;
   };
 
   const handleFiles = useCallback(
@@ -200,61 +196,94 @@ export function ImageUpload({
       )}
 
       {value.length < maxImages && (
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={cn(
-            'relative border-2 border-dashed rounded-lg p-8 text-center transition-colors',
-            dragOver
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 hover:border-gray-400',
-            isUploading && 'opacity-50 pointer-events-none'
-          )}
-        >
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={handleInputChange}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-            disabled={isUploading}
-          />
-          
-          <div className="space-y-3">
-            {isUploading ? (
-              <>
-                <Loader2 className="w-10 h-10 mx-auto text-blue-500 animate-spin" />
-                <p className="text-sm text-gray-600">{uploadProgress}</p>
-              </>
-            ) : (
-              <>
-                <div className="w-12 h-12 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
-                  {value.length === 0 ? (
-                    <ImageIcon className="w-6 h-6 text-gray-400" />
-                  ) : (
-                    <Upload className="w-6 h-6 text-gray-400" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {value.length === 0 ? 'Upload product images' : 'Add more images'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Drag and drop or click to browse
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    PNG, JPG up to 5MB • {value.length} of {maxImages} images
-                  </p>
-                </div>
-              </>
+        <div className="space-y-4">
+          {/* Direct URL Form */}
+          <div className="flex gap-2">
+            <input
+              type="url"
+              placeholder="Paste image URL (https://...)"
+              value={imageUrlInput}
+              onChange={(e) => {
+                setImageUrlInput(e.target.value);
+                setInputError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddUrl();
+                }
+              }}
+              className="flex-1 px-3 py-2 text-sm bg-background border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleAddUrl()}
+              disabled={!imageUrlInput.trim()}
+              className="flex-shrink-0"
+            >
+              Add URL
+            </Button>
+          </div>
+          {inputError && <p className="text-xs text-red-500">{inputError}</p>}
+
+          {/* Drag & Drop Zone */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={cn(
+              'relative border-2 border-dashed rounded-lg p-6 text-center transition-colors',
+              dragOver
+                ? 'border-blue-500 bg-blue-50'
+                : 'border-border hover:border-muted-foreground/50',
+              isUploading && 'opacity-50 pointer-events-none'
             )}
+          >
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleInputChange}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              disabled={isUploading}
+            />
+            
+            <div className="space-y-2">
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-8 h-8 mx-auto text-primary animate-spin" />
+                  <p className="text-xs text-muted-foreground">{uploadProgress}</p>
+                </>
+              ) : (
+                <>
+                  <div className="w-10 h-10 mx-auto bg-muted rounded-full flex items-center justify-center">
+                    {value.length === 0 ? (
+                      <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                    ) : (
+                      <Upload className="w-5 h-5 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {value.length === 0 ? 'Upload image files' : 'Upload more images'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Drag and drop or click to browse
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/75 mt-0.5">
+                      PNG, JPG, WEBP up to 5MB • {value.length} of {maxImages} images
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {value.length >= maxImages && (
-        <p className="text-sm text-gray-500 text-center">
+        <p className="text-xs text-muted-foreground text-center">
           Maximum {maxImages} images reached. Remove an image to add more.
         </p>
       )}
