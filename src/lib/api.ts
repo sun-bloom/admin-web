@@ -479,7 +479,23 @@ export const deliveryApi = {
     const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions/${id}`, { method: 'DELETE', headers: { ...getAuthHeaders() } })
     const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to delete region'); return data
   },
+  async getAdminRegions(): Promise<DeliverySettingsData> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions`, { headers: { ...getAuthHeaders() } })
+    if (!response.ok) throw new Error('Failed to load regions')
+    return response.json()
+  },
+  async getGeoStates(): Promise<string[]> {
+    const response = await fetch(`${API_BASE_URL}/api/delivery/geo`)
+    const data = await response.json()
+    return data.states || []
+  },
+  async getGeoCities(state: string): Promise<string[]> {
+    const response = await fetch(`${API_BASE_URL}/api/delivery/geo?state=${encodeURIComponent(state)}`)
+    const data = await response.json()
+    return data.cities || []
+  },
 }
+
 
 export const consultantApi = {
   async getCount() { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants/count`, { headers: getAuthHeaders() }); return (await r.json()).count as number },

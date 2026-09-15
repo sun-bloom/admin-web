@@ -184,19 +184,18 @@ export interface SettingsData {
 // Delivery Settings Types
 export interface DeliveryRegion {
   id: string
-  regionName: string
+  city: string
+  state: string
   pincodeStart: string
   pincodeEnd: string
   isEnabled: boolean
   deliveryCharge: number
-  estimatedDays: number
-  codAvailable: boolean
-  createdAt: string
-  updatedAt: string
 }
 
 export interface DeliverySettingsData {
   regions: DeliveryRegion[]
+  freeShippingThreshold?: number
+  defaultShippingCharge?: number
 }
 
 // Admin Types
