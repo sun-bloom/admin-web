@@ -633,3 +633,163 @@ export const paymentSettingsApi = {
     return await response.json();
   },
 };
+
+export interface AdminCustomerQueryMessage {
+  id: string;
+  queryId: string;
+  senderType: 'CUSTOMER' | 'ADMIN';
+  senderId?: string | null;
+  senderName?: string | null;
+  message: string;
+  attachment?: string | null;
+  isInternal: boolean;
+  createdAt: string;
+}
+
+export interface AdminCustomerQueryListItem {
+  id: string;
+  queryNumber: string;
+  customerId: string;
+  orderId?: string | null;
+  category: string;
+  subject: string;
+  status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_CUSTOMER' | 'RESOLVED' | 'CLOSED';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string | null;
+  customer: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    whatsappNumber?: string | null;
+  };
+  order?: {
+    id: string;
+    orderNumber: string;
+    status: string;
+    totalAmount: number;
+  } | null;
+  messages?: AdminCustomerQueryMessage[];
+  _count?: {
+    messages: number;
+  };
+}
+
+export interface AdminCustomerQueryDetail extends AdminCustomerQueryListItem {
+  customer: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    whatsappNumber?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+  };
+  order?: any | null;
+  messages: AdminCustomerQueryMessage[];
+}
+
+export interface AdminCustomerQueryStats {
+  total: number;
+  open: number;
+  inProgress: number;
+  waitingForCustomer: number;
+  resolved: number;
+  closed: number;
+  active: number;
+}
+
+export const customerQueryApi = {
+  async getStats(): Promise<AdminCustomerQueryStats> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/stats`, {
+      headers: { ...getAuthHeaders() },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch query statistics');
+    }
+    const data = await response.json();
+    return data.stats;
+  },
+
+  async getAll(params?: {
+    category?: string;
+    status?: string;
+    priority?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ queries: AdminCustomerQueryListItem[]; pagination: any }> {
+    const searchParams = new URLSearchParams();
+    if (params?.category && params.category !== 'ALL') searchParams.set('category', params.category);
+    if (params?.status && params.status !== 'ALL') searchParams.set('status', params.status);
+    if (params?.priority && params.priority !== 'ALL') searchParams.set('priority', params.priority);
+    if (params?.search?.trim()) searchParams.set('search', params.search.trim());
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+
+    const qs = searchParams.toString();
+    const url = `${API_BASE_URL}/api/admin/customer-queries${qs ? `?${qs}` : ''}`;
+
+    const response = await fetch(url, {
+      headers: { ...getAuthHeaders() },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch customer queries');
+    }
+    return await response.json();
+  },
+
+  async getById(id: string): Promise<AdminCustomerQueryDetail> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/${id}`, {
+      headers: { ...getAuthHeaders() },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch customer query detail');
+    }
+    const data = await response.json();
+    return data.query;
+  },
+
+  async sendMessage(
+    id: string,
+    payload: { message: string; isInternal?: boolean; status?: string }
+  ): Promise<{ message: AdminCustomerQueryMessage; query: any }> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/${id}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || err?.error || 'Failed to post message');
+    }
+    return await response.json();
+  },
+
+  async update(
+    id: string,
+    payload: { status?: string; priority?: string }
+  ): Promise<any> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || err?.error || 'Failed to update query');
+    }
+    return await response.json();
+  },
+};
+

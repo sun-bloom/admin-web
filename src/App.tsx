@@ -29,7 +29,7 @@ import CustomerList from './pages/customers/CustomerList';
 import DeliverySettings from './pages/settings/DeliverySettings';
 import PaymentSettings from './pages/settings/PaymentSettings';
 import OrderConsultants from './pages/orders/OrderConsultants';
-import SupportPlaceholder from './pages/support/SupportPlaceholder';
+import CustomerQueries from './pages/support/CustomerQueries';
 
 // Error Pages
 import NotFound from './pages/errors/NotFound';
@@ -113,10 +113,14 @@ function AppRoutes() {
         <Route path="categories/new" element={<CategoryForm />} />
         <Route path="categories/:id/edit" element={<CategoryForm />} />
 
-        {/* Orders */}
+        {/* Orders & Consultations */}
         <Route path="orders" element={<OrderList />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="order-consultants" element={<OrderConsultants />} />
+
+        {/* Customer Queries */}
+        <Route path="customer-queries" element={<CustomerQueries />} />
+        <Route path="support" element={<CustomerQueries />} />
 
         {/* Customers */}
         <Route path="customers" element={<CustomerList />} />

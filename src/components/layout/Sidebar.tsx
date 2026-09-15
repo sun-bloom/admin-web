@@ -15,6 +15,7 @@ import {
   CreditCard,
   UserCog,
   MessageCircle,
+  Headphones,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,6 +29,7 @@ const mainNavigation = [
   { name: 'Product List', href: '/product-list', icon: Package },
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Order Consultants', href: '/order-consultants', icon: MessageCircle },
+  { name: 'Customer Queries', href: '/customer-queries', icon: Headphones },
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Categories', href: '/categories', icon: Tag },
 ];
