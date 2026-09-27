@@ -57,7 +57,7 @@ export default function PaymentSettings() {
             Payment Gateway Settings
           </h1>
           <p className="text-muted-foreground mt-1">
-            Cashfree Payment Gateway integration &amp; webhook monitoring
+            PayU Production Gateway integration &amp; webhook monitoring
           </p>
         </div>
         <Button
@@ -186,7 +186,7 @@ export default function PaymentSettings() {
                 Production Webhook Configuration
               </CardTitle>
               <CardDescription>
-                Cashfree fires real-time payment notifications to this endpoint. Register this URL in your Cashfree Merchant Dashboard under Developers &gt; Webhooks.
+                PayU fires real-time payment notifications to this endpoint. Register this URL in your PayU Merchant Dashboard under Webhooks.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -235,7 +235,7 @@ export default function PaymentSettings() {
                 Supported Customer Payment Channels
               </CardTitle>
               <CardDescription>
-                Payment options rendered dynamically by Cashfree JS SDK v3 during customer checkout.
+                Payment options rendered dynamically by PayU during customer checkout.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -256,7 +256,7 @@ export default function PaymentSettings() {
                     <span>Desktop Dynamic UPI QR</span>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Presents an order-specific dynamic QR code in an in-page modal. Customer scans from any UPI app; Cashfree automatically confirms without page reload.
+                    Presents an order-specific dynamic QR code in an in-page modal. Customer scans from any UPI app; PayU automatically confirms without page reload.
                   </p>
                 </div>
 
@@ -281,16 +281,16 @@ export default function PaymentSettings() {
                 <div className="space-y-1 text-xs">
                   <h4 className="font-semibold text-foreground text-sm">Merchant Settlement Architecture</h4>
                   <p className="text-muted-foreground leading-relaxed">
-                    All customer payments are automatically collected and verified by Cashfree under RBI payment aggregator regulations. Funds settle directly to your designated business bank account / VPA configured in the Cashfree Merchant Dashboard. No customer financial data or merchant private keys are stored on the storefront.
+                    All customer payments are automatically collected and verified by PayU under RBI regulations. Funds settle directly to your designated business bank account / VPA configured in the PayU Merchant Dashboard. No customer financial data or merchant private keys are stored on the storefront.
                   </p>
                   <div className="pt-2">
                     <a
-                      href="https://merchant.cashfree.com"
+                      href="https://dashboard.payu.in"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
                     >
-                      Open Cashfree Merchant Dashboard
+                      Open PayU Merchant Dashboard
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>

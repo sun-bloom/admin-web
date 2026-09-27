@@ -20,11 +20,19 @@ export default function ProductList() {
 
   const handleDelete = async (id: string) => {
     if (confirm('Are you sure you want to delete this product?')) {
-      await deleteProduct(id);
-      toast({
-        title: 'Product deleted',
-        description: 'The product has been successfully deleted.',
-      });
+      try {
+        await deleteProduct(id);
+        toast({
+          title: 'Product deleted',
+          description: 'The product has been successfully deleted.',
+        });
+      } catch (err: any) {
+        toast({
+          title: 'Failed to delete product',
+          description: err?.message || 'Could not delete product.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 

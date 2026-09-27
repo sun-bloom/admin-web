@@ -8,25 +8,29 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { ordersApi } from '@/lib/api'
 import { toast } from 'sonner'
-import { ArrowLeft, Truck, Package, CreditCard, User, MapPin, Calendar, ExternalLink, Save, Loader2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  Truck,
+  Package,
+  CreditCard,
+  User,
+  MapPin,
+  Calendar,
+  ExternalLink,
+  Save,
+  Loader2,
+  CheckCircle2,
+  Clock,
+  MessageSquare
+} from 'lucide-react'
 import type { Order } from '@/types'
 
-const orderStatuses = [
-  { value: 'pending', label: 'Pending', color: 'bg-yellow-100 text-yellow-800' },
-  { value: 'confirmed', label: 'Confirmed', color: 'bg-blue-100 text-blue-800' },
-  { value: 'shipped', label: 'Shipped', color: 'bg-purple-100 text-purple-800' },
-  { value: 'delivered', label: 'Delivered', color: 'bg-green-100 text-green-800' },
-  { value: 'cancelled', label: 'Cancelled', color: 'bg-red-100 text-red-800' },
-]
-
-const carriers = [
-  { value: 'delhivery', label: 'Delhivery' },
-  { value: 'shiprocket', label: 'Shiprocket' },
-  { value: 'bluedart', label: 'Blue Dart' },
-  { value: 'dtdc', label: 'DTDC' },
-  { value: 'fedex', label: 'FedEx' },
-  { value: 'india_post', label: 'India Post' },
-  { value: 'other', label: 'Other' },
+// Authoritative Sunbloom Adorn 3-Stage Delivery Workflow (+ Cancelled)
+const deliveryStatuses = [
+  { value: 'confirmed', label: 'ORDER PLACED', badgeColor: 'bg-amber-100 text-amber-900 border-amber-300' },
+  { value: 'shipped', label: 'OUT FOR DELIVERY', badgeColor: 'bg-blue-100 text-blue-900 border-blue-300' },
+  { value: 'delivered', label: 'DELIVERED', badgeColor: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
+  { value: 'cancelled', label: 'CANCELLED', badgeColor: 'bg-rose-100 text-rose-900 border-rose-300' },
 ]
 
 export default function OrderDetail() {
@@ -38,6 +42,7 @@ export default function OrderDetail() {
   const [trackingCarrier, setTrackingCarrier] = useState('')
   const [trackingNumber, setTrackingNumber] = useState('')
   const [trackingUrl, setTrackingUrl] = useState('')
+  const [urlError, setUrlError] = useState('')
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -69,31 +74,58 @@ export default function OrderDetail() {
     loadOrder()
   }, [id, navigate])
 
+  const validateUrl = (url: string): boolean => {
+    if (!url.trim()) {
+      setUrlError('')
+      return true
+    }
+    try {
+      const parsed = new URL(url.trim())
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+        setUrlError('')
+        return true
+      }
+      setUrlError('Tracking URL must start with http:// or https://')
+      return false
+    } catch {
+      setUrlError('Please enter a valid URL (e.g., https://track.courier.com/12345)')
+      return false
+    }
+  }
+
   const handleSaveTracking = async () => {
     if (!order) return
     
+    if (trackingUrl && !validateUrl(trackingUrl)) {
+      toast.error('Please provide a valid courier tracking URL')
+      return
+    }
+
     setIsSaving(true)
     try {
       const updateData: Partial<Order> = {
-        trackingCarrier: trackingCarrier || undefined,
-        trackingNumber: trackingNumber || undefined,
-        trackingUrl: trackingUrl || undefined,
+        trackingCarrier: trackingCarrier.trim() || undefined,
+        trackingNumber: trackingNumber.trim() || undefined,
+        trackingUrl: trackingUrl.trim() || undefined,
       }
 
-      if (trackingNumber && order.orderStatus === 'confirmed') {
-        updateData.orderStatus = 'shipped'
-        updateData.shippedAt = new Date().toISOString()
-      }
+      const updated = await ordersApi.update(order.id, updateData)
+      toast.success('Tracking details saved successfully')
 
-      await ordersApi.update(order.id, updateData)
-      toast.success('Tracking information updated')
+      if (updated?.notificationResult) {
+        if (updated.notificationResult.sent) {
+          toast.success('WhatsApp notification sent to customer!')
+        } else if (updated.notificationResult.reason === 'PROVIDER_NOT_CONFIGURED') {
+          toast.info('WhatsApp notification logged (Meta API provider credentials not configured in .env)')
+        }
+      }
       
-      const updatedOrder = await ordersApi.getById(order.id)
-      if (updatedOrder) {
-        setOrder(updatedOrder)
+      const refreshedOrder = await ordersApi.getById(order.id)
+      if (refreshedOrder) {
+        setOrder(refreshedOrder)
       }
-    } catch (error) {
-      toast.error('Failed to update tracking')
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || error.message || 'Failed to update tracking')
       console.error(error)
     } finally {
       setIsSaving(false)
@@ -109,36 +141,54 @@ export default function OrderDetail() {
         orderStatus: newStatus as Order['orderStatus'],
       }
 
-      if (newStatus === 'delivered') {
+      if (newStatus === 'shipped') {
+        updateData.shippedAt = new Date().toISOString()
+      } else if (newStatus === 'delivered') {
         updateData.deliveredAt = new Date().toISOString()
       }
 
-      await ordersApi.update(order.id, updateData)
-      toast.success(`Order status updated to ${newStatus}`)
-      
-      const updatedOrder = await ordersApi.getById(order.id)
-      if (updatedOrder) {
-        setOrder(updatedOrder)
+      const updated = await ordersApi.update(order.id, updateData)
+      const label = deliveryStatuses.find(s => s.value === newStatus)?.label || newStatus
+      toast.success(`Delivery status updated to ${label}`)
+
+      if (updated?.notificationResult) {
+        if (updated.notificationResult.sent) {
+          toast.success('WhatsApp notification sent to customer!')
+        } else if (updated.notificationResult.reason === 'PROVIDER_NOT_CONFIGURED') {
+          toast.info('WhatsApp notification logged (Meta API provider credentials not configured in .env)')
+        }
       }
-    } catch (error) {
-      toast.error('Failed to update status')
+      
+      const refreshedOrder = await ordersApi.getById(order.id)
+      if (refreshedOrder) {
+        setOrder(refreshedOrder)
+      }
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || error.message || 'Failed to update status')
       console.error(error)
     } finally {
       setIsSaving(false)
     }
   }
 
+  const getDeliveryStatusLabel = (status: string) => {
+    if (status === 'shipped') return 'OUT FOR DELIVERY'
+    if (status === 'delivered') return 'DELIVERED'
+    if (status === 'cancelled') return 'CANCELLED'
+    return 'ORDER PLACED'
+  }
+
   const getStatusBadge = (status: string) => {
-    const statusConfig = orderStatuses.find(s => s.value === status)
-    return statusConfig ? (
-      <Badge className={statusConfig.color}>
-        {statusConfig.label}
+    const config = deliveryStatuses.find(s => s.value === status) || deliveryStatuses[0]
+    return (
+      <Badge variant="outline" className={`px-3 py-1 font-semibold text-xs tracking-wider uppercase ${config.badgeColor}`}>
+        {getDeliveryStatusLabel(status)}
       </Badge>
-    ) : <Badge>{status}</Badge>
+    )
   }
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return 'N/A'
+    if (!dateString) return 'Pending'
     return new Date(dateString).toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'short',
@@ -202,6 +252,7 @@ export default function OrderDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {/* Order Items */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -259,6 +310,7 @@ export default function OrderDetail() {
             </CardContent>
           </Card>
 
+          {/* Customer Information */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -269,20 +321,27 @@ export default function OrderDetail() {
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Name</p>
+                  <p className="text-sm text-muted-foreground mb-1">Customer Name</p>
                   <p className="font-medium">{order.customerName}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Phone</p>
+                  <p className="text-sm text-muted-foreground mb-1">Authenticated Email</p>
+                  <p className="font-medium">{order.customerEmail || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Mobile Number</p>
                   <p className="font-medium">{order.customerPhone}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Email</p>
-                  <p className="font-medium">{order.customerEmail}</p>
+                  <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                    <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                    WhatsApp Number
+                  </p>
+                  <p className="font-medium">{order.whatsappNumber || order.customerPhone || '—'}</p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
+                    <MapPin className="h-3.5 w-3.5" />
                     Delivery Address
                   </p>
                   <p className="font-medium">{order.deliveryAddress}</p>
@@ -296,28 +355,28 @@ export default function OrderDetail() {
         </div>
 
         <div className="space-y-6">
+          {/* Payment Status Card */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CreditCard className="h-5 w-5" />
-                Payment Information
+                Payment Status
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Payment Method</p>
-                <p className="font-medium capitalize">{order.paymentMethod}</p>
+                <p className="font-medium capitalize">{order.paymentMethod || 'Online'}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Payment Status</p>
-                <Badge className={order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                  {order.paymentStatus}
+                <Badge className={order.paymentStatus === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}>
+                  {order.paymentStatus?.toUpperCase()}
                 </Badge>
-                {order.paymentStatus !== 'paid' && <p className="text-xs text-muted-foreground mt-2">Payment not yet confirmed.</p>}
               </div>
               {order.upiTransactionId && (
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Transaction ID</p>
+                  <p className="text-sm text-muted-foreground mb-1">UPI / Gateway Ref</p>
                   <p className="font-medium font-mono text-sm">{order.upiTransactionId}</p>
                 </div>
               )}
@@ -330,95 +389,141 @@ export default function OrderDetail() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                Order Status
+          {/* Delivery Status Management */}
+          <Card className="border-amber-200 shadow-sm">
+            <CardHeader className="bg-amber-50/50 pb-3">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                <Calendar className="h-5 w-5 text-amber-700" />
+                Delivery Status
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label className="mb-2 block">Update Status</Label>
-                <select
-                  value={order.orderStatus}
-                  onChange={(e) => handleStatusChange(e.target.value)}
-                  disabled={isSaving}
-                  className="w-full h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                >
-                  {orderStatuses.map((status) => (
-                    <option key={status.value} value={status.value}>
-                      {status.label}
-                    </option>
-                  ))}
-                </select>
+            <CardContent className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Update Delivery Stage
+                </Label>
+                <div className="grid grid-cols-1 gap-2">
+                  <Button
+                    type="button"
+                    variant={order.orderStatus === 'confirmed' || order.orderStatus === 'pending' ? 'default' : 'outline'}
+                    size="sm"
+                    className="justify-start font-medium"
+                    onClick={() => handleStatusChange('confirmed')}
+                    disabled={isSaving}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    ORDER PLACED
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={order.orderStatus === 'shipped' ? 'default' : 'outline'}
+                    size="sm"
+                    className="justify-start font-medium"
+                    onClick={() => handleStatusChange('shipped')}
+                    disabled={isSaving}
+                  >
+                    <Truck className="h-4 w-4 mr-2" />
+                    OUT FOR DELIVERY
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={order.orderStatus === 'delivered' ? 'default' : 'outline'}
+                    size="sm"
+                    className="justify-start font-medium"
+                    onClick={() => handleStatusChange('delivered')}
+                    disabled={isSaving}
+                  >
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    DELIVERED
+                  </Button>
+                </div>
               </div>
-              
-              {order.shippedAt && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Shipped On</p>
-                  <p className="font-medium">{formatDate(order.shippedAt)}</p>
+
+              <Separator />
+
+              <div className="space-y-2 text-xs text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Order Placed:</span>
+                  <span className="font-medium text-foreground">{formatDate(order.createdAt)}</span>
                 </div>
-              )}
-              
-              {order.deliveredAt && (
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Delivered On</p>
-                  <p className="font-medium">{formatDate(order.deliveredAt)}</p>
+                <div className="flex justify-between">
+                  <span>Out for Delivery:</span>
+                  <span className="font-medium text-foreground">{order.shippedAt ? formatDate(order.shippedAt) : 'Pending'}</span>
                 </div>
-              )}
+                <div className="flex justify-between">
+                  <span>Delivered:</span>
+                  <span className="font-medium text-foreground">{order.deliveredAt ? formatDate(order.deliveredAt) : 'Pending'}</span>
+                </div>
+                {order.whatsappNotifiedAt && (
+                  <div className="flex justify-between pt-1 border-t text-emerald-700">
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" /> WhatsApp Notified:
+                    </span>
+                    <span className="font-medium">{formatDate(order.whatsappNotifiedAt)}</span>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
+          {/* Courier Tracking URL & Details */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Truck className="h-5 w-5" />
-                Tracking Information
+                Courier Tracking URL
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="carrier" className="mb-2 block">Carrier</Label>
-                <select
-                  id="carrier"
-                  value={trackingCarrier}
-                  onChange={(e) => setTrackingCarrier(e.target.value)}
-                  className="w-full h-10 rounded-md border border-input bg-transparent px-3 py-2 text-sm"
-                >
-                  <option value="">Select carrier</option>
-                  {carriers.map((carrier) => (
-                    <option key={carrier.value} value={carrier.value}>
-                      {carrier.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="trackingNumber" className="mb-2 block">Tracking Number</Label>
-                <Input
-                  id="trackingNumber"
-                  value={trackingNumber}
-                  onChange={(e) => setTrackingNumber(e.target.value)}
-                  placeholder="Enter tracking number"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="trackingUrl" className="mb-2 block">Tracking URL (Optional)</Label>
+                <Label htmlFor="trackingUrl" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                  Courier Tracking URL
+                </Label>
                 <Input
                   id="trackingUrl"
                   value={trackingUrl}
-                  onChange={(e) => setTrackingUrl(e.target.value)}
-                  placeholder="https://..."
+                  onChange={(e) => {
+                    setTrackingUrl(e.target.value)
+                    validateUrl(e.target.value)
+                  }}
+                  placeholder="https://track.courier.com/shipment/..."
+                  className={urlError ? 'border-rose-500 focus-visible:ring-rose-500' : ''}
                 />
+                {urlError && <p className="text-xs text-rose-600 mt-1 font-medium">{urlError}</p>}
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Paste the authoritative courier tracking link provided by the logistics partner.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="trackingCarrier" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                    Courier Name (Optional)
+                  </Label>
+                  <Input
+                    id="trackingCarrier"
+                    value={trackingCarrier}
+                    onChange={(e) => setTrackingCarrier(e.target.value)}
+                    placeholder="e.g. Blue Dart, Delhivery"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="trackingNumber" className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                    AWB / Tracking # (Optional)
+                  </Label>
+                  <Input
+                    id="trackingNumber"
+                    value={trackingNumber}
+                    onChange={(e) => setTrackingNumber(e.target.value)}
+                    placeholder="e.g. 1234567890"
+                  />
+                </div>
               </div>
 
               <Button
                 onClick={handleSaveTracking}
-                disabled={isSaving}
-                className="w-full"
+                disabled={isSaving || Boolean(urlError)}
+                className="w-full bg-stone-900 hover:bg-stone-800 text-white"
               >
                 {isSaving ? (
                   <>
@@ -428,31 +533,23 @@ export default function OrderDetail() {
                 ) : (
                   <>
                     <Save className="h-4 w-4 mr-2" />
-                    Save Tracking Info
+                    SAVE TRACKING DETAILS
                   </>
                 )}
               </Button>
 
-              {order.trackingNumber && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm text-muted-foreground mb-2">Current Tracking</p>
-                  <div className="space-y-1">
-                    <p className="font-medium">
-                      {carriers.find(c => c.value === order.trackingCarrier)?.label || order.trackingCarrier}
-                    </p>
-                    <p className="font-mono text-sm">{order.trackingNumber}</p>
-                    {order.trackingUrl && (
-                      <a
-                        href={order.trackingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                      >
-                        Track Package
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
+              {order.trackingUrl && (
+                <div className="pt-3 border-t">
+                  <p className="text-xs text-muted-foreground mb-1.5 font-medium">Active Customer Tracking Link:</p>
+                  <a
+                    href={order.trackingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded border border-emerald-200 hover:underline break-all"
+                  >
+                    <span>Test Courier Link</span>
+                    <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                  </a>
                 </div>
               )}
             </CardContent>

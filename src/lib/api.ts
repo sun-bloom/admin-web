@@ -51,6 +51,7 @@ export const productsApi = {
     const query = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''
     const response = await fetch(`${API_BASE_URL}/api/admin/products${query}`, {
       headers: { ...getAuthHeaders() },
+      cache: 'no-store',
     })
     const data = await response.json()
     return data.products
@@ -102,7 +103,11 @@ export const productsApi = {
       method: 'DELETE',
       headers: { ...getAuthHeaders() },
     })
-    return response.ok
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.details || error?.error || 'Failed to delete product')
+    }
+    return true
   },
 
   async getCategories(): Promise<Category[]> {
@@ -282,35 +287,51 @@ export const ordersApi = {
   },
 }
 
-export const customersApi = {
-  async getAll(): Promise<Customer[]> {
-    const response = await fetch(`${API_BASE_URL}/api/customers`, {
+export const dashboardApi = {
+  async getStats(): Promise<import('@/types').AdminDashboardStats> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/dashboard/stats`, {
       headers: { ...getAuthHeaders() },
     })
+    if (!response.ok) {
+      throw new Error('Failed to fetch dashboard operational statistics')
+    }
+    return response.json()
+  },
+}
+
+export const customersApi = {
+  async getAll(search?: string): Promise<Customer[]> {
+    const query = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''
+    const response = await fetch(`${API_BASE_URL}/api/customers${query}`, {
+      headers: { ...getAuthHeaders() },
+    })
+    if (!response.ok) {
+      throw new Error('Failed to fetch customers')
+    }
     const data = await response.json()
-    return data.customers
+    return data.customers || []
   },
 
   async getById(id: string): Promise<Customer | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/customers`, {
+    const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
       headers: { ...getAuthHeaders() },
     })
-    const customers = (await response.json()).customers
-    return customers.find((c: Customer) => c.id === id)
+    if (response.ok) {
+      const data = await response.json()
+      return data.customer
+    }
+    return undefined
   },
 
   async getByEmail(email: string): Promise<Customer | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/customers`, {
-      headers: { ...getAuthHeaders() },
-    })
-    const customers = (await response.json()).customers
-    return customers.find((c: Customer) => c.email === email)
+    const customers = await this.getAll(email)
+    return customers.find((c: Customer) => c.email.toLowerCase() === email.toLowerCase())
   },
 
   async create(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
     const response = await fetch(`${API_BASE_URL}/api/customers`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(customer),
     })
     return response.json()
@@ -335,17 +356,12 @@ export const customersApi = {
   },
 
   async getCustomerStats() {
-    const response = await fetch(`${API_BASE_URL}/api/customers`, {
-      headers: { ...getAuthHeaders() },
-    })
-    const customers = (await response.json()).customers
+    const customers = await this.getAll()
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
     const newCustomers = customers.filter((c: any) => new Date(c.createdAt) >= today)
-    const activeCustomers = customers.filter((c: any) => c.lastOrderDate &&
-      new Date(c.lastOrderDate) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    )
+    const activeCustomers = customers.filter((c: any) => c.totalOrders > 0)
 
     return {
       totalCustomers: customers.length,

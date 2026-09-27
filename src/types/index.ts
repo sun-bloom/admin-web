@@ -135,6 +135,13 @@ export interface Order {
   trackingUrl?: string
   shippedAt?: string
   deliveredAt?: string
+  whatsappNotifiedAt?: string
+  notificationResult?: {
+    success: boolean
+    sent: boolean
+    reason?: string
+    message: string
+  }
   notes?: string
   createdAt: string
   updatedAt: string
@@ -282,17 +289,58 @@ export interface ChartDataPoint {
 
 export interface Customer {
   id: string
+  firebaseUid?: string | null
   name: string
   email: string
-  phone: string
-  address?: string
-  city?: string
-  pincode?: string
+  phone?: string | null
+  whatsappNumber?: string | null
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  pincode?: string | null
   totalOrders: number
   totalSpent: number
-  lastOrderDate?: string
+  lastOrderDate?: string | null
   createdAt: string
   updatedAt: string
+  queryCount?: number
+  consultantCount?: number
+  orders?: Order[]
+  customerQueries?: any[]
+  consultantRequests?: any[]
+}
+
+export interface AdminDashboardStats {
+  orders: {
+    total: number
+    pending: number
+    confirmed: number
+    shipped: number
+    delivered: number
+    cancelled: number
+    today: number
+    awaitingTracking: number
+  }
+  revenue: {
+    total: number
+    today: number
+    averageOrderValue: number
+  }
+  products: {
+    total: number
+    active: number
+    lowStock: number
+    outOfStock: number
+  }
+  customers: {
+    total: number
+    today: number
+  }
+  enquiries: {
+    pendingConsultations: number
+    openSupportQueries: number
+  }
+  recentOrders: Order[]
 }
 
 export interface CustomersData {
