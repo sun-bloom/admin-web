@@ -113,7 +113,12 @@ export const productsApi = {
   async getCategories(): Promise<Category[]> {
     const response = await fetch(`${API_BASE_URL}/api/admin/categories`, {
       headers: { ...getAuthHeaders() },
+      cache: 'no-store',
     })
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.details || error?.error || 'Failed to load categories')
+    }
     const data = await response.json()
     return data.categories || []
   },
@@ -150,7 +155,11 @@ export const productsApi = {
       method: 'DELETE',
       headers: { ...getAuthHeaders() },
     })
-    return response.ok
+    if (!response.ok) {
+      const error = await response.json().catch(() => null)
+      throw new Error(error?.details || error?.error || 'Failed to delete category')
+    }
+    return true
   },
 
   async createSubcategory(subcategory: SubcategoryPayload): Promise<Subcategory> {
