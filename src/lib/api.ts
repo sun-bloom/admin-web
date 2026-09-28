@@ -818,3 +818,79 @@ export const customerQueryApi = {
   },
 };
 
+// ── Hero Banner Slider API (Admin) ────────────────────────────────────────────
+export interface HeroBanner {
+  id: string;
+  imageUrl: string;
+  publicId: string | null;
+  altText: string | null;
+  linkUrl: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const bannersApi = {
+  /** Fetch all banners (including inactive) for admin management view */
+  async getAll(): Promise<HeroBanner[]> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/banners/admin-list`, {
+      headers: { ...getAuthHeaders() },
+      cache: 'no-store',
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || err?.error || 'Failed to load banners');
+    }
+    const data = await response.json();
+    return data.banners || [];
+  },
+
+  /** Upload a new banner image via the backend (Cloudinary) */
+  async upload(file: File, altText?: string, linkUrl?: string): Promise<HeroBanner> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (altText) formData.append('altText', altText);
+    if (linkUrl) formData.append('linkUrl', linkUrl);
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/banners/upload`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders() },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || err?.error || 'Failed to upload banner');
+    }
+    const data = await response.json();
+    return data.banner;
+  },
+
+  /** Update banner metadata (altText, linkUrl, sortOrder, isActive) */
+  async patch(id: string, payload: Partial<Pick<HeroBanner, 'altText' | 'linkUrl' | 'sortOrder' | 'isActive'>>): Promise<HeroBanner> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/banners/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || err?.error || 'Failed to update banner');
+    }
+    const data = await response.json();
+    return data.banner;
+  },
+
+  /** Delete a banner (removes DB record and Cloudinary asset) */
+  async remove(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/api/admin/banners/${id}`, {
+      method: 'DELETE',
+      headers: { ...getAuthHeaders() },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      throw new Error(err?.message || err?.error || 'Failed to delete banner');
+    }
+  },
+};
+

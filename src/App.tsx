@@ -28,6 +28,7 @@ import CustomerList from './pages/customers/CustomerList';
 // Settings Pages
 import DeliverySettings from './pages/settings/DeliverySettings';
 import PaymentSettings from './pages/settings/PaymentSettings';
+import HeroBanners from './pages/settings/HeroBanners';
 import OrderConsultants from './pages/orders/OrderConsultants';
 import CustomerQueries from './pages/support/CustomerQueries';
 
@@ -129,6 +130,7 @@ function AppRoutes() {
         <Route path="settings" element={<Navigate to="/settings/delivery" replace />} />
         <Route path="settings/delivery" element={<DeliverySettings />} />
         <Route path="settings/payment" element={<PaymentSettings />} />
+        <Route path="settings/banners" element={<HeroBanners />} />
       </Route>
 
       {/* 404 */}

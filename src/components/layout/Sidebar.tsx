@@ -16,6 +16,7 @@ import {
   UserCog,
   MessageCircle,
   Headphones,
+  Image,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,6 +38,7 @@ const mainNavigation = [
 const settingsSubmenu = [
   { name: 'Delivery', href: '/settings/delivery', icon: Truck },
   { name: 'Payment', href: '/settings/payment', icon: CreditCard },
+  { name: 'Hero Banners', href: '/settings/banners', icon: Image },
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
