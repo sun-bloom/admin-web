@@ -101,9 +101,15 @@ export default function ProductAdd() {
   const onSubmit = async (data: ProductFormData) => {
     setIsLoading(true)
     try {
+      const slug = data.slug?.trim() ? data.slug.trim() : undefined
       await productsApi.create({
         ...data,
+        slug,
         subcategoryId: data.subcategoryId || null,
+        variants: data.variants.map((v) => ({
+          ...v,
+          pattern: v.pattern?.trim() || null,
+        })),
       })
       toast.success('Product created successfully')
       navigate('/products')
@@ -149,10 +155,12 @@ export default function ProductAdd() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="slug">URL Slug *</Label>
+                <Label htmlFor="slug">
+                  URL Slug <span className="text-muted-foreground font-normal">(Optional)</span>
+                </Label>
                 <Input
                   id="slug"
-                  placeholder="floral-print-crop-top"
+                  placeholder="Leave empty to auto-generate from name"
                   {...form.register('slug')}
                   onChange={(e) => {
                     const sanitized = e.target.value
@@ -293,9 +301,11 @@ export default function ProductAdd() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Pattern *</Label>
+                      <Label>
+                        Pattern <span className="text-muted-foreground font-normal">(Optional)</span>
+                      </Label>
                       <Input
-                        placeholder="Solid"
+                        placeholder="e.g. Solid, Floral (leave blank if none)"
                         {...form.register(`variants.${index}.pattern`)}
                         disabled={isLoading}
                       />

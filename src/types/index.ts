@@ -10,7 +10,7 @@ export interface CartItem {
   productSlug: string
   productImage: string
   color: string
-  pattern: string
+  pattern?: string | null
   quantity: number
   unitPrice: number
   totalPrice: number
@@ -28,7 +28,7 @@ export interface CartSummary {
 export interface Variant {
   id: string
   color: string
-  pattern: string
+  pattern?: string | null
   stock: number
   additionalPrice: number
   variantNumber?: string | null
@@ -63,8 +63,9 @@ export interface Product {
 
 export type ProductPayload = Omit<
   Product,
-  'id' | 'createdAt' | 'updatedAt' | 'category' | 'variants'
+  'id' | 'createdAt' | 'updatedAt' | 'category' | 'variants' | 'slug'
 > & {
+  slug?: string
   variants: VariantPayload[]
 }
 export interface Subcategory {
@@ -100,7 +101,7 @@ export interface OrderItem {
   productNumber?: string | null
   variantNumber?: string | null
   color?: string
-  pattern?: string
+  pattern?: string | null
   quantity: number
   unitPrice: number
   totalPrice: number

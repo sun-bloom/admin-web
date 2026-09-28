@@ -274,7 +274,7 @@ export default function OrderDetail() {
                     <div className="flex-1 min-w-[9rem]">
                       <p className="font-medium break-words">{item.productName}</p>
                       <p className="text-sm text-muted-foreground">
-                        {item.color} / {item.pattern} × {item.quantity}
+                        {item.color}{item.pattern ? ` / ${item.pattern}` : ''} × {item.quantity}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         Product Number: {item.productNumber || '—'} · Variant: {item.variantNumber || '—'}

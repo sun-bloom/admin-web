@@ -7,7 +7,13 @@ export const loginSchema = z.object({
 
 export const productSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters'),
-  slug: z.string().min(3, 'Slug must be at least 3 characters').regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
+  slug: z
+    .string()
+    .optional()
+    .or(z.literal(''))
+    .refine((val) => !val || /^[a-z0-9-]+$/.test(val), {
+      message: 'Slug can only contain lowercase letters, numbers, and hyphens',
+    }),
   categoryId: z.string().min(1, 'Category is required'),
   subcategoryId: z.string().optional().nullable(),
   description: z.string().min(10, 'Description must be at least 10 characters'),
@@ -20,7 +26,7 @@ export const productSchema = z.object({
       z.object({
         id: z.string().optional(),
         color: z.string().min(1, 'Color is required'),
-        pattern: z.string().min(1, 'Pattern is required'),
+        pattern: z.string().optional().nullable().or(z.literal('')),
         variantNumber: z.string().regex(/^([0-9]{2})$/, 'Variant Number must be 2 digits (01-99)').optional(),
         stock: z.number().min(0, 'Stock cannot be negative'),
         additionalPrice: z.number().min(0, 'Additional price cannot be negative'),
@@ -39,12 +45,16 @@ export const productSchema = z.object({
       const seen = new Set<string>();
       variants.forEach((v, index) => {
         if (v.isAvailable === false && v.stock === 0) return;
-        const key = `${String(v.color).trim().toLowerCase()}__${String(v.pattern).trim().toLowerCase()}`;
+        const colorKey = String(v.color || '').trim().toLowerCase();
+        const patternKey = v.pattern ? String(v.pattern).trim().toLowerCase() : '';
+        const key = `${colorKey}__${patternKey}`;
         if (seen.has(key)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: 'Duplicate variant (color + pattern) is not allowed',
-            path: [index, 'pattern'],
+            message: patternKey
+              ? 'Duplicate variant (color + pattern) is not allowed'
+              : 'Duplicate variant (color) is not allowed',
+            path: [index, patternKey ? 'pattern' : 'color'],
           });
         }
         seen.add(key);
