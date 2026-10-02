@@ -34,6 +34,7 @@ import {
   ChevronRight,
   ShieldAlert,
   Inbox,
+  MessageCircle,
 } from 'lucide-react';
 
 const CATEGORIES = ['ALL', 'Order', 'Payment', 'Delivery', 'Product', 'Return / Refund', 'Other'];
@@ -486,6 +487,21 @@ export default function CustomerQueries() {
                         <p className="text-muted-foreground">
                           Location: {queryDetail.customer.city}, {queryDetail.customer.state || ''} {queryDetail.customer.pincode || ''}
                         </p>
+                      )}
+                      {(queryDetail.customer.whatsappNumber || queryDetail.customer.phone) && (
+                        <div className="pt-2">
+                          <a
+                            href={`https://wa.me/91${String(queryDetail.customer.whatsappNumber || queryDetail.customer.phone).replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(
+                              `✨ *Sunbloom Adorn Concierge*\n\nHello ${queryDetail.customer.name},\nRegarding your support ticket #${queryDetail.queryNumber} ("${queryDetail.subject}"):\n\nOur concierge team is at your service. How may we assist you today?\n\nThank you for reaching out to Sunbloom Adorn.`
+                            )}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-xs"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>WhatsApp Customer</span>
+                          </a>
+                        </div>
                       )}
                     </CardContent>
                   </Card>

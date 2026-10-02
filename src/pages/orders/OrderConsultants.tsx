@@ -15,6 +15,7 @@ import {
   RefreshCw,
   X,
   Filter,
+  MessageCircle,
 } from 'lucide-react'
 
 const STATUS_OPTIONS = [
@@ -401,24 +402,46 @@ export default function OrderConsultants() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground font-medium">
-                  Status:
-                </span>
-                <select
-                  value={request.status === 'NEW' ? 'PENDING' : request.status}
-                  onChange={async (e) => {
-                    await consultantApi.updateStatus(request.id, e.target.value)
-                    load()
-                  }}
-                  className="h-9 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
+              <div className="flex flex-wrap items-center gap-2">
+                {request.phone && (
+                  <a
+                    href={`https://wa.me/91${String(request.whatsappNumber || request.phone).replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(
+                      `✨ *Sunbloom Adorn — Delivery Location Update*\n\nHello ${request.name},\nRegarding your delivery enquiry for ${request.city} (PIN: ${request.pincode}):\n${
+                        request.status === 'DELIVERY_AVAILABLE'
+                          ? 'Great news! Delivery serviceability has been verified for your address. You can now complete your order directly at: https://sunbloomadorn.com/cart'
+                          : request.status === 'DELIVERY_UNAVAILABLE'
+                          ? 'We regret to inform you that courier coverage is currently not available for this postal code. Please contact our concierge if you have an alternative delivery address.'
+                          : 'Our logistics atelier is reviewing courier coverage for your address.'
+                      }\n\nThank you for choosing Sunbloom Adorn.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-xs"
+                    title="Open WhatsApp chat with pre-filled status update"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Status:
+                  </span>
+                  <select
+                    value={request.status === 'NEW' ? 'PENDING' : request.status}
+                    onChange={async (e) => {
+                      await consultantApi.updateStatus(request.id, e.target.value)
+                      load()
+                    }}
+                    className="h-9 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </CardHeader>
 
