@@ -44,9 +44,9 @@ export default function CategoryList() {
       setError(null)
       const data = await productsApi.getCategories()
       setCategories(data)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load categories:', err)
-      setError('Unable to load categories.')
+      setError(err?.message || 'Unable to load categories.')
     } finally {
       setIsLoading(false)
     }
@@ -118,9 +118,9 @@ export default function CategoryList() {
 
         <Card className="max-w-md mx-auto my-12 rounded-2xl border-destructive/20 bg-destructive/5 text-center p-8">
           <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-          <h2 className="text-lg font-semibold text-foreground mb-2">{error}</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-2">Unable to load categories</h2>
           <p className="text-sm text-muted-foreground mb-6">
-            Failed to connect to the backend server. Please verify the API is running and try again.
+            {error ? error : 'Failed to connect to the backend server. Please verify the API is running and try again.'}
           </p>
           <Button onClick={loadCategories} className="rounded-xl">
             <RefreshCw className="h-4 w-4 mr-2" />

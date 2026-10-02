@@ -24,6 +24,23 @@ export function useProducts(search = '') {
     fetchProducts()
   }, [fetchProducts])
 
+  useEffect(() => {
+    const handleProductUpdated = () => {
+      fetchProducts()
+    }
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        fetchProducts()
+      }
+    }
+    window.addEventListener('product-updated', handleProductUpdated)
+    window.addEventListener('pageshow', handlePageShow)
+    return () => {
+      window.removeEventListener('product-updated', handleProductUpdated)
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [fetchProducts])
+
   const createProduct = async (product: Parameters<typeof productsApi.create>[0]) => {
     const newProduct = await productsApi.create(product)
     setProducts(prev => [...prev, newProduct])

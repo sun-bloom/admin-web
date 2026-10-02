@@ -2,8 +2,6 @@ import type {
   Product,
   ProductPayload,
   Order,
-  ProductsData,
-  OrdersData,
   SettingsData,
   DeliverySettingsData,
   DeliveryRegion,
@@ -35,9 +33,148 @@ const generateId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substr(2)
 }
 
-const getAuthHeaders = (): Record<string, string> => {
-  const token = localStorage.getItem('admin_token')
+export const getAuthHeaders = (): Record<string, string> => {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('admin_token') : null
   return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
+export interface AdminFetchOptions extends RequestInit {
+  timeoutMs?: number;
+  retries?: number;
+  retryDelayMs?: number;
+  skipAuth?: boolean;
+}
+
+// In-flight GET request deduplication map to prevent cold-start storms
+const inFlightRequests = new Map<string, Promise<any>>();
+
+/**
+ * Production-safe API fetcher for admin-web:
+ * - 55s default timeout allows Render free-tier cold starts (~30-45s) to wake up cleanly.
+ * - Exponential backoff retry (up to 2 retries, 3 attempts total) on network failures or 502/503/504 gateway responses.
+ * - Never retries 4xx client errors (400, 401, 403, 404, 409).
+ * - Always passes `cache: 'no-store'` and appends a `_t` timestamp to GET queries to guarantee fresh data.
+ * - Coalesces concurrent identical in-flight GET requests.
+ * - Accurately propagates server error messages without silently masking them.
+ */
+export async function adminApiFetch<T = any>(
+  pathOrUrl: string,
+  options: AdminFetchOptions = {}
+): Promise<T> {
+  const {
+    timeoutMs = 55000,
+    retries = 2,
+    retryDelayMs = 2000,
+    skipAuth = false,
+    headers: customHeaders = {},
+    ...fetchOptions
+  } = options;
+
+  const url = pathOrUrl.startsWith('http') ? pathOrUrl : `${API_BASE_URL}${pathOrUrl}`;
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
+
+  // Deduplicate concurrent in-flight GET requests
+  const cacheKey = isGet ? `${method}:${url}` : null;
+  if (cacheKey && inFlightRequests.has(cacheKey)) {
+    return inFlightRequests.get(cacheKey) as Promise<T>;
+  }
+
+  const execute = async (): Promise<T> => {
+    let lastError: Error | null = null;
+    const maxAttempts = isGet ? 1 + retries : 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort(new Error(`Request timed out after ${timeoutMs}ms waiting for backend server`));
+      }, timeoutMs);
+
+      try {
+        const authHeaders = skipAuth ? {} : getAuthHeaders();
+        const requestHeaders: Record<string, string> = {
+          Accept: 'application/json',
+          ...authHeaders,
+          ...(customHeaders as Record<string, string>),
+        };
+
+        // Cache-busting query parameter for GET requests
+        let finalUrl = url;
+        if (isGet) {
+          const sep = finalUrl.includes('?') ? '&' : '?';
+          finalUrl = `${finalUrl}${sep}_t=${Date.now()}`;
+        }
+
+        const response = await fetch(finalUrl, {
+          ...fetchOptions,
+          method,
+          headers: requestHeaders,
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        // If transient server error (Render cold-start proxy 502/503/504) and attempts remain
+        if ([502, 503, 504].includes(response.status) && attempt < maxAttempts) {
+          const delay = retryDelayMs * attempt;
+          console.warn(`[adminApiFetch] Transient HTTP ${response.status} on attempt ${attempt}. Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => null);
+          const message =
+            errData?.details ||
+            errData?.error ||
+            errData?.message ||
+            `HTTP ${response.status}: ${response.statusText}`;
+          const err = new Error(message);
+          (err as any).status = response.status;
+          (err as any).data = errData;
+          throw err;
+        }
+
+        if (response.status === 204) {
+          return null as T;
+        }
+
+        const data = await response.json();
+        return data as T;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        lastError = err instanceof Error ? err : new Error(String(err));
+
+        // Do NOT retry 4xx errors
+        if (err?.status && err.status >= 400 && err.status < 500) {
+          throw err;
+        }
+
+        // Retry on network/timeout error if attempts remain
+        if (attempt < maxAttempts) {
+          const delay = retryDelayMs * attempt;
+          console.warn(`[adminApiFetch] Network/timeout failure on attempt ${attempt}: ${lastError.message}. Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        throw lastError;
+      }
+    }
+
+    throw lastError || new Error('Request failed');
+  };
+
+  if (cacheKey) {
+    const promise = execute().finally(() => {
+      inFlightRequests.delete(cacheKey);
+    });
+    inFlightRequests.set(cacheKey, promise);
+    return promise;
+  }
+
+  return execute();
 }
 
 type CategoryPayload = Pick<Category, 'name' | 'slug' | 'description' | 'image' | 'categoryNumber'>
@@ -49,207 +186,171 @@ export const productsApi = {
   async getAll(search?: string): Promise<Product[]> {
     // Use admin endpoint so productNumber is included in the response
     const query = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''
-    const response = await fetch(`${API_BASE_URL}/api/admin/products${query}`, {
-      headers: { ...getAuthHeaders() },
-      cache: 'no-store',
-    })
-    const data = await response.json()
-    return data.products
+    const data = await adminApiFetch<{ products: Product[] }>(`/api/admin/products${query}`)
+    return data.products || []
   },
 
   async getById(id: string): Promise<Product | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/products/${id}`)
-    if (response.ok) {
-      return await response.json()
+    try {
+      const product = await adminApiFetch<Product>(`/api/admin/products/${encodeURIComponent(id)}`)
+      return product
+    } catch (err: any) {
+      if (err?.status === 404) {
+        try {
+          return await adminApiFetch<Product>(`/api/products/${encodeURIComponent(id)}`)
+        } catch {
+          return undefined
+        }
+      }
+      throw err
     }
-    return undefined
   },
 
   async getBySlug(slug: string): Promise<Product | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/products`)
-    const data = await response.json()
-    return data.products.find((p: Product) => p.slug === slug)
+    const data = await adminApiFetch<{ products: Product[] }>('/api/products')
+    return (data.products || []).find((p: Product) => p.slug === slug)
   },
 
   async create(product: ProductPayload): Promise<Product> {
-    const response = await fetch(`${API_BASE_URL}/api/products`, {
+    const created = await adminApiFetch<Product>('/api/products', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(product),
     })
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      // Backend typically returns { error, details, fields }
-      throw new Error(error?.details || error?.error || 'Failed to create product')
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('product-updated', { detail: { id: created?.id, product: created } }))
     }
-
-    return response.json()
+    return created
   },
 
   async update(id: string, data: Partial<ProductPayload>): Promise<Product> {
-    const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
+    const updated = await adminApiFetch<Product>(`/api/products/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (response.ok) return await response.json()
-    const error = await response.json().catch(() => null)
-    throw new Error(error?.details || error?.error || 'Failed to update product')
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('product-updated', { detail: { id, product: updated } }))
+    }
+    return updated
   },
 
   async delete(id: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/products/${id}`, {
+    await adminApiFetch(`/api/products/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: { ...getAuthHeaders() },
     })
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.details || error?.error || 'Failed to delete product')
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('product-updated', { detail: { id } }))
     }
     return true
   },
 
   async getCategories(): Promise<Category[]> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/categories`, {
-      headers: { ...getAuthHeaders() },
-      cache: 'no-store',
-    })
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.details || error?.error || 'Failed to load categories')
-    }
-    const data = await response.json()
+    const data = await adminApiFetch<{ categories: Category[] }>('/api/admin/categories')
     return data.categories || []
   },
 
   async createCategory(category: CategoryPayload): Promise<Category> {
-    const response = await fetch(`${API_BASE_URL}/api/categories`, {
+    const data = await adminApiFetch<any>('/api/categories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(category),
     })
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.error || 'Failed to create category')
-    }
-    const data = await response.json()
     return data.category || data
   },
 
   async updateCategory(id: string, category: CategoryPayload): Promise<Category | null> {
-    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+    const data = await adminApiFetch<any>(`/api/categories/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(category),
     })
-    if (response.ok) {
-      const data = await response.json()
-      return data.category || data
-    }
-    return null
+    return data.category || data
   },
 
   async deleteCategory(id: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/categories/${id}`, {
+    await adminApiFetch(`/api/categories/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: { ...getAuthHeaders() },
     })
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.details || error?.error || 'Failed to delete category')
-    }
     return true
   },
 
   async createSubcategory(subcategory: SubcategoryPayload): Promise<Subcategory> {
-    const response = await fetch(`${API_BASE_URL}/api/subcategories`, {
+    const data = await adminApiFetch<any>('/api/subcategories', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subcategory),
     })
-    if (!response.ok) {
-      const error = await response.json().catch(() => null)
-      throw new Error(error?.error || 'Failed to create subcategory')
-    }
-    const data = await response.json()
     return data.subcategory || data
   },
 
   async updateSubcategory(id: string, subcategory: Partial<SubcategoryPayload>): Promise<Subcategory | null> {
-    const response = await fetch(`${API_BASE_URL}/api/subcategories/${id}`, {
+    const data = await adminApiFetch<any>(`/api/subcategories/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(subcategory),
     })
-    if (!response.ok) return null
-
-    if (response.ok) {
-      const data = await response.json()
-      return data.subcategory || data
-    }
-    return null
+    return data.subcategory || data
   },
 
   async deleteSubcategory(id: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/subcategories/${id}`, {
-      method: 'DELETE',
-      headers: { ...getAuthHeaders() },
-    })
-    return response.ok
+    try {
+      await adminApiFetch(`/api/subcategories/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      return true
+    } catch {
+      return false
+    }
   },
 
   async getLowStock(threshold: number = 5): Promise<Product[]> {
-    const response = await fetch(`${API_BASE_URL}/api/products`)
-    const products = (await response.json()).products
+    const data = await adminApiFetch<{ products: Product[] }>('/api/admin/products')
+    const products = data.products || []
     return products.filter((p: Product) =>
-      p.variants.some((v: any) => v.isAvailable && v.stock <= threshold)
+      p.variants?.some((v: any) => v.isAvailable && v.stock <= threshold)
     )
   },
 }
 
 export const ordersApi = {
   async getAll(): Promise<Order[]> {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
-      headers: { ...getAuthHeaders() },
-    })
-    const data = await response.json()
-    return data.orders
+    const data = await adminApiFetch<{ orders: Order[] }>('/api/orders')
+    return data.orders || []
   },
 
   async getById(id: string): Promise<Order | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
-      headers: { ...getAuthHeaders() },
-    })
-    if (response.ok) return await response.json()
-    return undefined
+    try {
+      return await adminApiFetch<Order>(`/api/orders/${encodeURIComponent(id)}`)
+    } catch {
+      return undefined
+    }
   },
 
   async getByOrderNumber(orderNumber: string): Promise<Order | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
-      headers: { ...getAuthHeaders() },
-    })
-    const orders = (await response.json()).orders
+    const data = await adminApiFetch<{ orders: Order[] }>('/api/orders')
+    const orders = data.orders || []
     return orders.find((o: Order) => o.orderNumber === orderNumber)
   },
 
   async create(order: Omit<Order, 'id' | 'createdAt' | 'updatedAt' | 'orderNumber'>): Promise<Order> {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
+    return await adminApiFetch<Order>('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(order),
     })
-    return response.json()
   },
 
   async update(id: string, data: Partial<Order>): Promise<Order | null> {
-    const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify(data),
-    })
-    if (response.ok) return await response.json()
-    return null
+    try {
+      return await adminApiFetch<Order>(`/api/orders/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    } catch {
+      return null
+    }
   },
 
   async updateStatus(id: string, status: Order['orderStatus']): Promise<Order | null> {
@@ -257,23 +358,24 @@ export const ordersApi = {
   },
 
   async delete(id: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/orders/${id}`, {
-      method: 'DELETE',
-      headers: { ...getAuthHeaders() },
-    })
-    return response.ok
+    try {
+      await adminApiFetch(`/api/orders/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      return true
+    } catch {
+      return false
+    }
   },
 
   async getStats() {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
-      headers: { ...getAuthHeaders() },
-    })
-    const orders = (await response.json()).orders
+    const data = await adminApiFetch<{ orders: Order[] }>('/api/orders')
+    const orders = data.orders || []
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
     const todayOrders = orders.filter((o: any) => new Date(o.createdAt) >= today)
-    const todayRevenue = todayOrders.reduce((sum: number, o: any) => sum + o.totalAmount, 0)
+    const todayRevenue = todayOrders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0)
     const pendingOrders = orders.filter((o: any) => o.orderStatus === 'pending' || o.orderStatus === 'confirmed')
 
     return {
@@ -281,15 +383,13 @@ export const ordersApi = {
       todayRevenue,
       totalOrders: orders.length,
       pendingOrders: pendingOrders.length,
-      totalRevenue: orders.reduce((sum: number, o: any) => sum + o.totalAmount, 0),
+      totalRevenue: orders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0),
     }
   },
 
   async getRecentOrders(limit: number = 5): Promise<Order[]> {
-    const response = await fetch(`${API_BASE_URL}/api/orders`, {
-      headers: { ...getAuthHeaders() },
-    })
-    const orders = (await response.json()).orders
+    const data = await adminApiFetch<{ orders: Order[] }>('/api/orders')
+    const orders = data.orders || []
     return orders
       .sort((a: Order, b: Order) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, limit)
@@ -298,38 +398,24 @@ export const ordersApi = {
 
 export const dashboardApi = {
   async getStats(): Promise<import('@/types').AdminDashboardStats> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/dashboard/stats`, {
-      headers: { ...getAuthHeaders() },
-    })
-    if (!response.ok) {
-      throw new Error('Failed to fetch dashboard operational statistics')
-    }
-    return response.json()
+    return await adminApiFetch<import('@/types').AdminDashboardStats>('/api/admin/dashboard/stats')
   },
 }
 
 export const customersApi = {
   async getAll(search?: string): Promise<Customer[]> {
     const query = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : ''
-    const response = await fetch(`${API_BASE_URL}/api/customers${query}`, {
-      headers: { ...getAuthHeaders() },
-    })
-    if (!response.ok) {
-      throw new Error('Failed to fetch customers')
-    }
-    const data = await response.json()
+    const data = await adminApiFetch<{ customers: Customer[] }>(`/api/customers${query}`)
     return data.customers || []
   },
 
   async getById(id: string): Promise<Customer | undefined> {
-    const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
-      headers: { ...getAuthHeaders() },
-    })
-    if (response.ok) {
-      const data = await response.json()
+    try {
+      const data = await adminApiFetch<{ customer: Customer }>(`/api/customers/${encodeURIComponent(id)}`)
       return data.customer
+    } catch {
+      return undefined
     }
-    return undefined
   },
 
   async getByEmail(email: string): Promise<Customer | undefined> {
@@ -338,30 +424,34 @@ export const customersApi = {
   },
 
   async create(customer: Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>): Promise<Customer> {
-    const response = await fetch(`${API_BASE_URL}/api/customers`, {
+    return await adminApiFetch<Customer>('/api/customers', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(customer),
     })
-    return response.json()
   },
 
   async update(id: string, data: Partial<Customer>): Promise<Customer | null> {
-    const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify(data),
-    })
-    if (response.ok) return await response.json()
-    return null
+    try {
+      return await adminApiFetch<Customer>(`/api/customers/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    } catch {
+      return null
+    }
   },
 
   async delete(id: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/customers/${id}`, {
-      method: 'DELETE',
-      headers: { ...getAuthHeaders() },
-    })
-    return response.ok
+    try {
+      await adminApiFetch(`/api/customers/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      return true
+    } catch {
+      return false
+    }
   },
 
   async getCustomerStats() {
@@ -382,57 +472,50 @@ export const customersApi = {
 
 export const settingsApi = {
   async getAll(): Promise<SettingsData> {
-    const response = await fetch(`${API_BASE_URL}/api/settings`)
-    return response.json()
+    return await adminApiFetch<SettingsData>('/api/settings')
   },
 
   async updateSite(data: Partial<SettingsData['site']>): Promise<SettingsData['site']> {
-    const response = await fetch(`${API_BASE_URL}/api/settings`, {
+    return await adminApiFetch<SettingsData['site']>('/api/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return response.json()
   },
 
   async updateUPI(data: Partial<SettingsData['upi']>): Promise<SettingsData['upi']> {
-    const response = await fetch(`${API_BASE_URL}/api/settings`, {
+    return await adminApiFetch<SettingsData['upi']>('/api/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return response.json()
   },
 
   async updateSocial(data: Partial<SettingsData['social']>): Promise<SettingsData['social']> {
-    const response = await fetch(`${API_BASE_URL}/api/settings`, {
+    return await adminApiFetch<SettingsData['social']>('/api/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return response.json()
   },
 
   async updatePolicies(data: Partial<SettingsData['policies']>): Promise<SettingsData['policies']> {
-    const response = await fetch(`${API_BASE_URL}/api/settings`, {
+    return await adminApiFetch<SettingsData['policies']>('/api/settings', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    return response.json()
   },
 }
 
 export const deliveryApi = {
   async getAll(): Promise<DeliverySettingsData> {
-    const response = await fetch(`${API_BASE_URL}/api/delivery`)
-    return response.json()
+    return await adminApiFetch<DeliverySettingsData>('/api/delivery')
   },
 
   async getRegionByPincode(pincode: string) {
-    const response = await fetch(`${API_BASE_URL}/api/delivery`)
-    const data = await response.json()
-    return data.regions.find((r: any) => {
+    const data = await adminApiFetch<{ regions: any[] }>('/api/delivery')
+    return (data.regions || []).find((r: any) => {
       const start = parseInt(r.pincodeStart)
       const end = parseInt(r.pincodeEnd)
       const pc = parseInt(pincode)
@@ -442,9 +525,9 @@ export const deliveryApi = {
 
   async createRegion(region: any): Promise<any> {
     const current = await this.getAll()
-    const response = await fetch(`${API_BASE_URL}/api/delivery`, {
+    return await adminApiFetch<any>('/api/delivery', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...current,
         regions: [
@@ -453,7 +536,6 @@ export const deliveryApi = {
         ]
       }),
     })
-    return response.json()
   },
 
   async updateRegion(id: string, data: any): Promise<any | null> {
@@ -461,9 +543,9 @@ export const deliveryApi = {
     const index = current.regions.findIndex((r: any) => r.id === id)
     if (index === -1) return null
 
-    const response = await fetch(`${API_BASE_URL}/api/delivery`, {
+    return await adminApiFetch<any>('/api/delivery', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...current,
         regions: [
@@ -473,7 +555,6 @@ export const deliveryApi = {
         ]
       }),
     })
-    return response.json()
   },
 
   async deleteRegion(id: string): Promise<boolean> {
@@ -481,416 +562,359 @@ export const deliveryApi = {
     const index = current.regions.findIndex((r: any) => r.id === id)
     if (index === -1) return false
 
-    const response = await fetch(`${API_BASE_URL}/api/delivery`, {
+    await adminApiFetch('/api/delivery', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...current,
         regions: current.regions.filter((r: any) => r.id !== id)
       }),
     })
-    return response.ok
+    return true
   },
 
   async createManagedRegion(region: Partial<DeliveryRegion>) {
-    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(region) })
-    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to create region'); return data
+    return await adminApiFetch('/api/admin/delivery/regions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(region),
+    })
   },
+
   async updateManagedRegion(id: string, region: Partial<DeliveryRegion>) {
-    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify(region) })
-    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to update region'); return data
+    return await adminApiFetch(`/api/admin/delivery/regions/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(region),
+    })
   },
+
   async deleteManagedRegion(id: string) {
-    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions/${id}`, { method: 'DELETE', headers: { ...getAuthHeaders() } })
-    const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Failed to delete region'); return data
+    return await adminApiFetch(`/api/admin/delivery/regions/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    })
   },
+
   async getAdminRegions(): Promise<DeliverySettingsData> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/delivery/regions`, { headers: { ...getAuthHeaders() } })
-    if (!response.ok) throw new Error('Failed to load regions')
-    return response.json()
+    return await adminApiFetch<DeliverySettingsData>('/api/admin/delivery/regions')
   },
+
   async getGeoStates(): Promise<string[]> {
-    const response = await fetch(`${API_BASE_URL}/api/delivery/geo`)
-    const data = await response.json()
+    const data = await adminApiFetch<{ states: string[] }>('/api/delivery/geo')
     return data.states || []
   },
+
   async getGeoCities(state: string): Promise<string[]> {
-    const response = await fetch(`${API_BASE_URL}/api/delivery/geo?state=${encodeURIComponent(state)}`)
-    const data = await response.json()
+    const data = await adminApiFetch<{ cities: string[] }>(`/api/delivery/geo?state=${encodeURIComponent(state)}`)
     return data.cities || []
   },
 }
 
-
 export const consultantApi = {
-  async getCount() { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants/count`, { headers: getAuthHeaders() }); return (await r.json()).count as number },
-  async getAll() { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants`, { headers: getAuthHeaders() }); return (await r.json()).requests as any[] },
-  async updateStatus(id: string, status: string) { const r = await fetch(`${API_BASE_URL}/api/admin/order-consultants/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...getAuthHeaders() }, body: JSON.stringify({ status }) }); const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed to update request'); return d.request },
+  async getCount(): Promise<number> {
+    const data = await adminApiFetch<{ count: number }>('/api/admin/order-consultants/count')
+    return data.count
+  },
+  async getAll(): Promise<any[]> {
+    const data = await adminApiFetch<{ requests: any[] }>('/api/admin/order-consultants')
+    return data.requests || []
+  },
+  async updateStatus(id: string, status: string): Promise<any> {
+    const data = await adminApiFetch<{ request: any }>(`/api/admin/order-consultants/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    return data.request
+  },
 }
 
 export const authApi = {
   async login(email: string, password: string): Promise<{ user: AdminUser; token: string }> {
-    const ALLOWED_ADMIN_EMAILS = ['sunbloomadornwork@gmail.com', 'skavinraj.dev@gmail.com'];
-    const normalizedEmail = email.toLowerCase().trim();
+    const ALLOWED_ADMIN_EMAILS = ['sunbloomadornwork@gmail.com', 'skavinraj.dev@gmail.com']
+    const normalizedEmail = email.toLowerCase().trim()
     if (!ALLOWED_ADMIN_EMAILS.includes(normalizedEmail)) {
-      throw new Error('Access denied. Only authorized admin accounts are permitted to access this dashboard.');
+      throw new Error('Access denied. Only authorized admin accounts are permitted to access this dashboard.')
     }
 
-    const { adminLoginWithEmail, adminLogout } = await import('@/lib/firebase');
-    const firebaseUser = await adminLoginWithEmail(normalizedEmail, password);
-    const idToken = await firebaseUser.getIdToken();
-    localStorage.setItem('admin_token', idToken);
+    const { adminLoginWithEmail, adminLogout } = await import('@/lib/firebase')
+    const firebaseUser = await adminLoginWithEmail(normalizedEmail, password)
+    const idToken = await firebaseUser.getIdToken()
+    localStorage.setItem('admin_token', idToken)
 
-    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      localStorage.removeItem('admin_token');
-      await adminLogout().catch(() => {});
-      const errJson = await response.json().catch(() => null);
-      throw new Error(errJson?.message || `Admin authorization failed (${response.status}). Ensure this account has admin permissions.`);
+    try {
+      const data = await adminApiFetch<{ user?: AdminUser } & AdminUser>('/api/auth/me', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      const user = (data?.user ?? data) as AdminUser
+      return { token: idToken, user }
+    } catch (err: any) {
+      localStorage.removeItem('admin_token')
+      await adminLogout().catch(() => {})
+      throw new Error(err?.message || 'Admin authorization failed. Ensure this account has admin permissions.')
     }
-
-    const data = await response.json();
-    const user = (data?.user ?? data) as AdminUser;
-    return { token: idToken, user };
   },
 
   async loginWithGoogle(): Promise<{ user: AdminUser; token: string }> {
-    const ALLOWED_ADMIN_EMAILS = ['sunbloomadornwork@gmail.com', 'skavinraj.dev@gmail.com'];
-    const { adminLoginWithGoogle, adminLogout } = await import('@/lib/firebase');
-    const firebaseUser = await adminLoginWithGoogle();
+    const ALLOWED_ADMIN_EMAILS = ['sunbloomadornwork@gmail.com', 'skavinraj.dev@gmail.com']
+    const { adminLoginWithGoogle, adminLogout } = await import('@/lib/firebase')
+    const firebaseUser = await adminLoginWithGoogle()
 
-    const email = (firebaseUser.email || '').toLowerCase().trim();
+    const email = (firebaseUser.email || '').toLowerCase().trim()
     if (!ALLOWED_ADMIN_EMAILS.includes(email)) {
-      await adminLogout().catch(() => {});
-      throw new Error(`Access denied (${email || 'unknown'}). Only authorized admin accounts are permitted to access this dashboard.`);
+      await adminLogout().catch(() => {})
+      throw new Error(`Access denied (${email || 'unknown'}). Only authorized admin accounts are permitted to access this dashboard.`)
     }
 
-    const idToken = await firebaseUser.getIdToken();
-    localStorage.setItem('admin_token', idToken);
+    const idToken = await firebaseUser.getIdToken()
+    localStorage.setItem('admin_token', idToken)
 
-    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${idToken}` },
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      localStorage.removeItem('admin_token');
-      await adminLogout().catch(() => {});
-      const errJson = await response.json().catch(() => null);
-      throw new Error(errJson?.message || `Admin authorization failed (${response.status}). Ensure this Google account has admin permissions.`);
+    try {
+      const data = await adminApiFetch<{ user?: AdminUser } & AdminUser>('/api/auth/me', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+      const user = (data?.user ?? data) as AdminUser
+      return { token: idToken, user }
+    } catch (err: any) {
+      localStorage.removeItem('admin_token')
+      await adminLogout().catch(() => {})
+      throw new Error(err?.message || 'Admin authorization failed. Ensure this Google account has admin permissions.')
     }
-
-    const data = await response.json();
-    const user = (data?.user ?? data) as AdminUser;
-    return { token: idToken, user };
   },
 
   async getAllUsers(): Promise<AdminUser[]> {
-    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      headers: { ...getAuthHeaders() },
-    });
-    const data = await response.json();
-    const user = (data?.user ?? data) as AdminUser;
-    return [user];
+    const data = await adminApiFetch<{ user?: AdminUser } & AdminUser>('/api/auth/me')
+    const user = (data?.user ?? data) as AdminUser
+    return [user]
   },
-};
+}
 
 export const mediaApi = {
   async upload(file: File, folder: string = 'products'): Promise<{ secure_url: string; public_id: string }> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('folder', folder);
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('folder', folder)
 
-    const response = await fetch(`${API_BASE_URL}/api/admin/media/upload`, {
+    return await adminApiFetch<{ secure_url: string; public_id: string }>('/api/admin/media/upload', {
       method: 'POST',
-      headers: {
-        ...getAuthHeaders(),
-      },
       body: formData,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-      throw new Error(error?.message || error?.error || 'Failed to upload image');
-    }
-
-    return response.json();
+    })
   },
 
   async delete(publicId: string): Promise<boolean> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/media`, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify({ public_id: publicId }),
-    });
-    return response.ok;
+    try {
+      await adminApiFetch('/api/admin/media', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_id: publicId }),
+      })
+      return true
+    } catch {
+      return false
+    }
   },
-};
+}
 
 export interface PaymentGatewayStatus {
-  gateway: string;
-  environment: 'sandbox' | 'production';
-  isConfigured: boolean;
-  webhookConfigured: boolean;
-  supportedMethods: string[];
-  appIdConfigured: boolean;
-  secretKeyConfigured: boolean;
-  siteUrl: string;
-  frontendUrl: string;
-  webhookUrl: string;
+  gateway: string
+  environment: 'sandbox' | 'production'
+  isConfigured: boolean
+  webhookConfigured: boolean
+  supportedMethods: string[]
+  appIdConfigured: boolean
+  secretKeyConfigured: boolean
+  siteUrl: string
+  frontendUrl: string
+  webhookUrl: string
 }
 
 export const paymentSettingsApi = {
   async getStatus(): Promise<PaymentGatewayStatus> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/payment-gateway-status`, {
-      headers: { ...getAuthHeaders() },
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch payment gateway status');
-    }
-    return await response.json();
+    return await adminApiFetch<PaymentGatewayStatus>('/api/admin/payment-gateway-status')
   },
-};
+}
 
 export interface AdminCustomerQueryMessage {
-  id: string;
-  queryId: string;
-  senderType: 'CUSTOMER' | 'ADMIN';
-  senderId?: string | null;
-  senderName?: string | null;
-  message: string;
-  attachment?: string | null;
-  isInternal: boolean;
-  createdAt: string;
+  id: string
+  queryId: string
+  senderType: 'CUSTOMER' | 'ADMIN'
+  senderId?: string | null
+  senderName?: string | null
+  message: string
+  attachment?: string | null
+  isInternal: boolean
+  createdAt: string
 }
 
 export interface AdminCustomerQueryListItem {
-  id: string;
-  queryNumber: string;
-  customerId: string;
-  orderId?: string | null;
-  category: string;
-  subject: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_CUSTOMER' | 'RESOLVED' | 'CLOSED';
-  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
-  createdAt: string;
-  updatedAt: string;
-  resolvedAt?: string | null;
+  id: string
+  queryNumber: string
+  customerId: string
+  orderId?: string | null
+  category: string
+  subject: string
+  status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_FOR_CUSTOMER' | 'RESOLVED' | 'CLOSED'
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
+  createdAt: string
+  updatedAt: string
+  resolvedAt?: string | null
   customer: {
-    id: string;
-    name: string;
-    email: string;
-    phone?: string | null;
-    whatsappNumber?: string | null;
-  };
+    id: string
+    name: string
+    email: string
+    phone?: string | null
+    whatsappNumber?: string | null
+  }
   order?: {
-    id: string;
-    orderNumber: string;
-    status: string;
-    totalAmount: number;
-  } | null;
-  messages?: AdminCustomerQueryMessage[];
+    id: string
+    orderNumber: string
+    status: string
+    totalAmount: number
+  } | null
+  messages?: AdminCustomerQueryMessage[]
   _count?: {
-    messages: number;
-  };
+    messages: number
+  }
 }
 
 export interface AdminCustomerQueryDetail extends AdminCustomerQueryListItem {
   customer: {
-    id: string;
-    name: string;
-    email: string;
-    phone?: string | null;
-    whatsappNumber?: string | null;
-    address?: string | null;
-    city?: string | null;
-    state?: string | null;
-    pincode?: string | null;
-  };
-  order?: any | null;
-  messages: AdminCustomerQueryMessage[];
+    id: string
+    name: string
+    email: string
+    phone?: string | null
+    whatsappNumber?: string | null
+    address?: string | null
+    city?: string | null
+    state?: string | null
+    pincode?: string | null
+  }
+  order?: any | null
+  messages: AdminCustomerQueryMessage[]
 }
 
 export interface AdminCustomerQueryStats {
-  total: number;
-  open: number;
-  inProgress: number;
-  waitingForCustomer: number;
-  resolved: number;
-  closed: number;
-  active: number;
+  total: number
+  open: number
+  inProgress: number
+  waitingForCustomer: number
+  resolved: number
+  closed: number
+  active: number
 }
 
 export const customerQueryApi = {
   async getStats(): Promise<AdminCustomerQueryStats> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/stats`, {
-      headers: { ...getAuthHeaders() },
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch query statistics');
-    }
-    const data = await response.json();
-    return data.stats;
+    const data = await adminApiFetch<{ stats: AdminCustomerQueryStats }>('/api/admin/customer-queries/stats')
+    return data.stats
   },
 
   async getAll(params?: {
-    category?: string;
-    status?: string;
-    priority?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
+    category?: string
+    status?: string
+    priority?: string
+    search?: string
+    page?: number
+    limit?: number
   }): Promise<{ queries: AdminCustomerQueryListItem[]; pagination: any }> {
-    const searchParams = new URLSearchParams();
-    if (params?.category && params.category !== 'ALL') searchParams.set('category', params.category);
-    if (params?.status && params.status !== 'ALL') searchParams.set('status', params.status);
-    if (params?.priority && params.priority !== 'ALL') searchParams.set('priority', params.priority);
-    if (params?.search?.trim()) searchParams.set('search', params.search.trim());
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const searchParams = new URLSearchParams()
+    if (params?.category && params.category !== 'ALL') searchParams.set('category', params.category)
+    if (params?.status && params.status !== 'ALL') searchParams.set('status', params.status)
+    if (params?.priority && params.priority !== 'ALL') searchParams.set('priority', params.priority)
+    if (params?.search?.trim()) searchParams.set('search', params.search.trim())
+    if (params?.page) searchParams.set('page', String(params.page))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
 
-    const qs = searchParams.toString();
-    const url = `${API_BASE_URL}/api/admin/customer-queries${qs ? `?${qs}` : ''}`;
-
-    const response = await fetch(url, {
-      headers: { ...getAuthHeaders() },
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch customer queries');
-    }
-    return await response.json();
+    const qs = searchParams.toString()
+    return await adminApiFetch<{ queries: AdminCustomerQueryListItem[]; pagination: any }>(
+      `/api/admin/customer-queries${qs ? `?${qs}` : ''}`
+    )
   },
 
   async getById(id: string): Promise<AdminCustomerQueryDetail> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/${id}`, {
-      headers: { ...getAuthHeaders() },
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch customer query detail');
-    }
-    const data = await response.json();
-    return data.query;
+    const data = await adminApiFetch<{ query: AdminCustomerQueryDetail }>(
+      `/api/admin/customer-queries/${encodeURIComponent(id)}`
+    )
+    return data.query
   },
 
   async sendMessage(
     id: string,
     payload: { message: string; isInternal?: boolean; status?: string }
   ): Promise<{ message: AdminCustomerQueryMessage; query: any }> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/${id}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => null);
-      throw new Error(err?.message || err?.error || 'Failed to post message');
-    }
-    return await response.json();
+    return await adminApiFetch<{ message: AdminCustomerQueryMessage; query: any }>(
+      `/api/admin/customer-queries/${encodeURIComponent(id)}/messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    )
   },
 
   async update(
     id: string,
     payload: { status?: string; priority?: string }
   ): Promise<any> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/customer-queries/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => null);
-      throw new Error(err?.message || err?.error || 'Failed to update query');
-    }
-    return await response.json();
+    return await adminApiFetch<any>(
+      `/api/admin/customer-queries/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    )
   },
-};
+}
 
 // ── Hero Banner Slider API (Admin) ────────────────────────────────────────────
 export interface HeroBanner {
-  id: string;
-  imageUrl: string;
-  publicId: string | null;
-  altText: string | null;
-  linkUrl: string | null;
-  sortOrder: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  id: string
+  imageUrl: string
+  publicId: string | null
+  altText: string | null
+  linkUrl: string | null
+  sortOrder: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export const bannersApi = {
   /** Fetch all banners (including inactive) for admin management view */
   async getAll(): Promise<HeroBanner[]> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/banners/admin-list`, {
-      headers: { ...getAuthHeaders() },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => null);
-      throw new Error(err?.message || err?.error || 'Failed to load banners');
-    }
-    const data = await response.json();
-    return data.banners || [];
+    const data = await adminApiFetch<{ banners: HeroBanner[] }>('/api/admin/banners/admin-list')
+    return data.banners || []
   },
 
   /** Upload a new banner image via the backend (Cloudinary) */
   async upload(file: File, altText?: string, linkUrl?: string): Promise<HeroBanner> {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (altText) formData.append('altText', altText);
-    if (linkUrl) formData.append('linkUrl', linkUrl);
+    const formData = new FormData()
+    formData.append('file', file)
+    if (altText) formData.append('altText', altText)
+    if (linkUrl) formData.append('linkUrl', linkUrl)
 
-    const response = await fetch(`${API_BASE_URL}/api/admin/banners/upload`, {
+    const data = await adminApiFetch<{ banner: HeroBanner }>('/api/admin/banners/upload', {
       method: 'POST',
-      headers: { ...getAuthHeaders() },
       body: formData,
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => null);
-      throw new Error(err?.message || err?.error || 'Failed to upload banner');
-    }
-    const data = await response.json();
-    return data.banner;
+    })
+    return data.banner
   },
 
   /** Update banner metadata (altText, linkUrl, sortOrder, isActive) */
   async patch(id: string, payload: Partial<Pick<HeroBanner, 'altText' | 'linkUrl' | 'sortOrder' | 'isActive'>>): Promise<HeroBanner> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/banners/${id}`, {
+    const data = await adminApiFetch<{ banner: HeroBanner }>(`/api/admin/banners/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => null);
-      throw new Error(err?.message || err?.error || 'Failed to update banner');
-    }
-    const data = await response.json();
-    return data.banner;
+    })
+    return data.banner
   },
 
   /** Delete a banner (removes DB record and Cloudinary asset) */
   async remove(id: string): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/admin/banners/${id}`, {
+    await adminApiFetch(`/api/admin/banners/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: { ...getAuthHeaders() },
-    });
-    if (!response.ok) {
-      const err = await response.json().catch(() => null);
-      throw new Error(err?.message || err?.error || 'Failed to delete banner');
-    }
+    })
   },
-};
-
+}
